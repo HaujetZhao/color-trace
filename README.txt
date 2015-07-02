@@ -1,6 +1,9 @@
 color_trace_multi.py
 v1.00 Windows exe-bundled version - Copyright (c) 2012 ukurereh
 
+(This code was found in the thread http://www.inkscapeforum.com/viewtopic.php?f=22&t=11898and
+and fixed).
+
 Traces multiple color images using potrace. This is similar to Inkscape's Trace Bitmap function.
 
 Requires Python 3.2 (or later) and the lxml library for Python 3.2 (or later).
