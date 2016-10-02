@@ -40,6 +40,7 @@ import subprocess
 import argparse
 from glob import iglob
 import functools
+import queue
 
 from svg_stack import svg_stack
 
@@ -65,7 +66,7 @@ def process_command(command, stdinput=None, stdout_=False, stderr_=False):
     stdin_pipe   = (subprocess.PIPE if stdinput  is not None else None)
     stdout_pipe  = (subprocess.PIPE if stdout_ is True else None)
     stderr_pipe  = subprocess.PIPE
-    
+
     #process = subprocess.Popen(command, stdin=stdin_pipe, stderr=stderr_pipe, stdout=stdout_pipe,
         #shell=True, creationflags=subprocess.SW_HIDE)
     process = subprocess.Popen(command, stdin=stdin_pipe, stderr=stderr_pipe, stdout=stdout_pipe,
@@ -122,7 +123,7 @@ def quantize(src, destquant, colors, algorithm='mc', dither=None):
     if colors == 0:
         #skip quantization, just copy directly to destquant
         shutil.copyfile(src, destquant)
-    
+
     elif algorithm == 'mc': #median-cut
         if dither is None:
             ditheropt = '-nofs '
@@ -149,7 +150,7 @@ def quantize(src, destquant, colors, algorithm='mc', dither=None):
         command = '"{convert}" "{src}" -dither {dither} -colors {colors} "{dest}"'.format(
             convert=IMAGEMAGICK_CONVERT_PATH, src=src, dither=ditheropt, colors=colors, dest=destquant)
         process_command(command)
-    
+
     elif algorithm == 'nq': #neuquant
         ext = "~quant.png"
         destdir = os.path.dirname(destquant)
@@ -182,7 +183,7 @@ def palette_remap(src, destremap, paletteimg, dither=None):
 
     if not os.path.exists(paletteimg): #because imagemagick doesn't check
         raise IOError("Remapping palette image {0} not found".format(paletteimg))
-    
+
     if dither is None:
         ditheropt = 'None'
     elif dither in ('floydsteinberg', 'riemersma'):
@@ -217,7 +218,7 @@ def make_palette(srcimage):
         hex_colors.append("#{0:02x}{1:02x}{2:02x}".format(*rgb))
     hex_colors.reverse() #so it will generally go from light bg to dark fg
     return hex_colors
-    
+
 
 def get_nonpalette_color(palette, start_black=True, additional=None):
     """return a color hex string not listed in palette
@@ -261,7 +262,7 @@ def get_nonpalette_color(palette, start_black=True, additional=None):
 #     # start off the piping of stdin/stdout
 #     with open(src, 'rb') as srcfile:
 #         stdinput = srcfile.read()
-    
+
 #     for i, col in enumerate(palette):
 #         # fill this color with background or foreground?
 #         if i == coloridx:
@@ -277,7 +278,7 @@ def get_nonpalette_color(palette, start_black=True, additional=None):
 
 #         stdoutput = process_command(command, stdinput=stdinput, stdout_=True)
 #         stdinput = stdoutput
-        
+
 #     # now color the foreground black and background white
 #     command = '"{convert}" - -fill {fillbg} -opaque "{colorbg}" -fill {fillfg} -opaque {colorfg} "{dest}"'.format(
 #         convert = IMAGEMAGICK_CONVERT_PATH, fillbg=bg_white, colorbg=bg_almost_white,
@@ -295,7 +296,7 @@ def isolate_color(src,target_tmp ,destlayer, target_color, palette, stack=False)
     stack: if True, colors before coloridx are white, colors after are black
 """
     coloridx = palette.index(target_color)
-    
+
     # to avoid problems when the palette contains black or white, background and
     # foreground colors are chosen that are not in the palette (nor black or white)
     bg_white = "#FFFFFF"
@@ -316,7 +317,7 @@ def isolate_color(src,target_tmp ,destlayer, target_color, palette, stack=False)
     command_pre  = '"{convert}" "{src}" '.format(convert = IMAGEMAGICK_CONVERT_PATH,src=src)
     command_post = ' "{target}"'.format(target=  target_tmp)
     command_mid = ''
-    
+
     for i, col in enumerate(palette):
         # fill this color with background or foreground?
         if i == coloridx:
@@ -365,7 +366,7 @@ def trace(src, desttrace, outcolor, despeckle=2, smoothcorners=1.0, optimizepath
     optimizepaths: Bezier curve optimization: 0 for least, 5 for most
         (same as potrace --opttolerance)
     width: width of output svg in pixels, None for default. Keeps aspect ratio.
-"""    
+"""
 
 
     if width is not None:
@@ -378,7 +379,7 @@ def trace(src, desttrace, outcolor, despeckle=2, smoothcorners=1.0, optimizepath
         src=src)
 
 
-    process_command(command) 
+    process_command(command)
 
 def check_range(min, max, typefunc, typename, strval):
     """for argparse type functions, checks the range of a value
@@ -417,7 +418,7 @@ def get_args(cmdargs=None):
     parser.add_argument(
         '-h', '--help', '/?',
         action='help',
-        help="show this help message and exit")    
+        help="show this help message and exit")
     # file io arguments
     parser.add_argument('-i',
         '--input', metavar='src', nargs='+', required=True,
@@ -522,7 +523,7 @@ def escape_brackets(string):
         elif letter == ']':
             letters[i] = '[]]'
     return ''.join(letters)
-        
+
 
 def get_inputs_outputs(arg_inputs, output_pattern="{0}.svg", ignore_duplicates=True):
     """returns an iterator of (input, matching output) with *? shell expansion
@@ -586,17 +587,17 @@ def color_trace_multi(inputs, outputs, colors, quantization='mc', dither=None,
     tmp_layer   = "{0}~tmp_layer.ppm"
     tmp_trace   = "{0}~tmp_trace.svg"
 
-    
+
     # so for each input and (dir-appended) output...
     for i, o in zip(inputs, outputs):
         verbose(i, ' -> ', o)
 
         # create destination directory if it doesn't exist
         destdir = os.path.dirname(os.path.abspath(o))
-        
+
         if not os.path.exists(destdir):
             os.makedirs(destdir)
-            
+
 
         # temporary files will reside next to the respective output file
         o_rootname = os.path.splitext(o)[0]
@@ -643,12 +644,12 @@ def color_trace_multi(inputs, outputs, colors, quantization='mc', dither=None,
                 doc.save(file)
 
         except (Exception, KeyboardInterrupt) as e:
-            # delete temporary files on exception... 
-            remfiles(this_scaled, this_reduced, this_layer, this_trace)
+            # delete temporary files on exception...
+            remfiles(this_scaled, this_reduced, this_isolated, this_layer, this_trace)
             raise e
         else:
             #...or after tracing
-            remfiles(this_scaled, this_reduced, this_layer, this_trace)
+            remfiles(this_scaled, this_reduced, this_isolated, this_layer, this_trace)
 
 
 def remfiles(*filepaths):
