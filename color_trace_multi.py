@@ -677,7 +677,7 @@ def q2_job(layers, settings, width, color, palette, findex, cindex, reduced, out
         remfiles(reduced, *layer_traces)
 
 
-def process_worker(q1, q2, layers, settings):
+def process_worker(q1, q2, progress, layers, settings):
     """
 
 """ # TODO
@@ -689,6 +689,7 @@ def process_worker(q1, q2, layers, settings):
                 job_args = q2.get(block=False)
                 q2_job(layers, settings, **job_args)
                 q2.task_done()
+                progress.value += 1
             except queue.Empty:
                 break
 
@@ -732,17 +733,20 @@ def color_trace_multi(inputs, outputs, colors, processcount, quantization='mc', 
     # q2 = isolation + tracing
     q2 = multiprocessing.JoinableQueue()
 
-    # create a manager to share the memory of layers between processes
+    # create a manager to share the layers between processes
     manager = multiprocessing.Manager()
     layers = []
     for i in range(min(len(inputs), len(outputs))):
         layers.append(manager.list())
         layers[i] += [False] * colors
 
+    # create a shared memory counter of completed tasks for measuring progress
+    progress = multiprocessing.Value('i', 0)
+
     # create and start processes
     processes = []
     for i in range(processcount):
-        p = multiprocessing.Process(target=process_worker, args=(q1, q2, layers, locals()))
+        p = multiprocessing.Process(target=process_worker, args=(q1, q2, progress, layers, locals()))
         p.name = "color_trace worker #" + str(i)
         p.start()
         processes.append(p)
@@ -755,7 +759,17 @@ def color_trace_multi(inputs, outputs, colors, processcount, quantization='mc', 
             # add a job to the first job queue
             q1.put({ 'input': i, 'output': o, 'findex': index })
 
-        # wait for all jobs to be completed
+
+        # show progress until all jobs have been completed
+        total = len(layers) * colors
+        while progress.value < total:
+            sys.stdout.write("\r%.1f%%" % (progress.value / total * 100))
+            sys.stdout.flush()
+            time.sleep(0.25)
+
+        sys.stdout.write("\rTracing complete!")
+
+        # join the queues just in case progress is wrong
         q1.join()
         q2.join()
     except (Exception, KeyboardInterrupt) as e:
