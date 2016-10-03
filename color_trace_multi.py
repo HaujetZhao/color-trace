@@ -573,9 +573,10 @@ def get_inputs_outputs(arg_inputs, output_pattern="{0}.svg", ignore_duplicates=T
 def q1_job(q2, settings, findex, input, output):
     """ Initializes files, rescales, and performs color reduction
 
-    q2: the second job queue
-    tmp: the temporary directory for holding intermediary files
-    colors: number of colors to quantize to, 0 for no quantization
+    q2: the second job queue (isolation + tracing)
+    settings: a dictionary that must contain the following keys:
+        colors, quantization, dither, remap, prescale, tmp
+        See color_trace_multi for details of the values
     findex: an integer index for input file
     input: the input path, source png file
     output: the output path, dest svg file
@@ -618,7 +619,6 @@ def q1_job(q2, settings, findex, input, output):
         # delete temporary files on exception...
         remfiles(this_scaled, this_reduced)
         raise e
-        # TODO improve error handling
     else:
         #...or after tracing
         remfiles(this_scaled)
@@ -627,13 +627,16 @@ def q1_job(q2, settings, findex, input, output):
 def q2_job(layers, settings, width, color, palette, findex, cindex, reduced, output):
     """ Isolates a color and traces it
 
-    tmp: the temporary directory for holding intermediary files
+    layers: an ordered list of traced layers as SVGFiles
+    settings: a dictionary that must contain the following keys:
+        stack, despeckle, smoothcorners, optimizepaths, tmp
+        See color_trace_multi for details of the values
+    width: the width of the input image
     color: the color to isolate
     findex: an integer index for input file
     cindex: an integer index for color
     reduced: the color-reduced input image
     output: the output path, dest svg file
-    layers: an ordered list of traced layers as SVGFiles
 """
     # temporary files will reside next to the respective output file
     this_isolated = os.path.abspath(os.path.join(settings['tmp'], '{0}-{1}~isolated.png'.format(findex, cindex)))
@@ -652,7 +655,6 @@ def q2_job(layers, settings, width, color, palette, findex, cindex, reduced, out
         # delete temporary files on exception...
         remfiles(reduced, this_isolated, this_layer, this_trace)
         raise e
-        # TODO improve error handling
     else:
         #...or after tracing
         remfiles(this_isolated, this_layer)
@@ -678,9 +680,19 @@ def q2_job(layers, settings, width, color, palette, findex, cindex, reduced, out
 
 
 def process_worker(q1, q2, progress, layers, settings):
-    """
+    """ Function for handling process jobs
 
-""" # TODO
+    q1: the first job queue (scaling + color reduction)
+    q2: the second job queue (isolation + tracing)
+    progress: a value to measure the number of completed q2 tasks
+    layers: a nested list. layers[file_index][color_index] is a boolean that
+        indicates if the layer for the file at file_index with the color
+        at color_index has been traced
+    settings: a dictionary that must contain the following keys:
+        quantization, dither, remap, stack, prescale, despeckle, smoothcorners,
+        optimizepaths, colors, tmp
+        See color_trace_multi for details of the values
+"""
     while True:
         # try and get a job from q2 before q1 to reduce the total number of
         # temporary files and memory
