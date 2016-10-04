@@ -570,10 +570,11 @@ def get_inputs_outputs(arg_inputs, output_pattern="{0}.svg", ignore_duplicates=T
                 yield input_, output
 
 
-def q1_job(q2, settings, findex, input, output):
+def q1_job(q2, layers, settings, findex, input, output):
     """ Initializes files, rescales, and performs color reduction
 
     q2: the second job queue (isolation + tracing)
+    layers: an ordered list of traced layers as SVGFiles
     settings: a dictionary that must contain the following keys:
         colors, quantization, dither, remap, prescale, tmp
         See color_trace_multi for details of the values
@@ -610,6 +611,9 @@ def q1_job(q2, settings, findex, input, output):
             #argparse should have caught this
             raise Exception("One of the arguments 'colors' or 'remap' must be specified")
         palette = make_palette(this_reduced)
+
+        # initialize layers for the file at findex
+        layers[findex] += [False] * len(palette)
 
         # add jobs to the second job queue
         for i, color in enumerate(palette):
@@ -709,7 +713,7 @@ def process_worker(q1, q2, progress, layers, settings):
         try:
             job_args = q1.get(block=False)
 
-            q1_job(q2, settings, **job_args)
+            q1_job(q2, layers, settings, **job_args)
             q1.task_done()
         except queue.Empty:
             time.sleep(.01)
@@ -750,7 +754,6 @@ def color_trace_multi(inputs, outputs, colors, processcount, quantization='mc', 
     layers = []
     for i in range(min(len(inputs), len(outputs))):
         layers.append(manager.list())
-        layers[i] += [False] * colors
 
     # create a shared memory counter of completed tasks for measuring progress
     progress = multiprocessing.Value('i', 0)
