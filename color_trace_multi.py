@@ -628,10 +628,11 @@ def q1_job(q2, layers, settings, findex, input, output):
         remfiles(this_scaled)
 
 
-def q2_job(layers, settings, width, color, palette, findex, cindex, reduced, output):
+def q2_job(layers, layers_lock, settings, width, color, palette, findex, cindex, reduced, output):
     """ Isolates a color and traces it
 
     layers: an ordered list of traced layers as SVGFiles
+    layers_lock: a lock that must be aquired for reading and writing the layers object
     settings: a dictionary that must contain the following keys:
         stack, despeckle, smoothcorners, optimizepaths, tmp
         See color_trace_multi for details of the values
@@ -652,9 +653,6 @@ def q2_job(layers, settings, width, color, palette, findex, cindex, reduced, out
         # isolate & trace for this color, add to svg stack
         isolate_color(reduced, this_isolated, this_layer, color, palette, stack=settings['stack'])
         trace(this_layer, this_trace, color, settings['despeckle'], settings['smoothcorners'], settings['optimizepaths'], width)
-
-        # add layer
-        layers[findex][cindex] = True
     except (Exception, KeyboardInterrupt) as e:
         # delete temporary files on exception...
         remfiles(reduced, this_isolated, this_layer, this_trace)
@@ -663,8 +661,18 @@ def q2_job(layers, settings, width, color, palette, findex, cindex, reduced, out
         #...or after tracing
         remfiles(this_isolated, this_layer)
 
+    layers_lock.aquire()
+    try:
+        # add layer
+        layers[findex][cindex] = True
+
+        # check if all layers of this file have been traced
+        is_last = False not in layers[findex]
+    finally:
+        layers_lock.release()
+
     # save the svg document if it is ready
-    if False not in layers[findex]:
+    if is_last:
         # start the svg stack
         layout = svg_stack.CBoxLayout()
 
@@ -683,7 +691,7 @@ def q2_job(layers, settings, width, color, palette, findex, cindex, reduced, out
         remfiles(reduced, *layer_traces)
 
 
-def process_worker(q1, q2, progress, layers, settings):
+def process_worker(q1, q2, progress, layers, layers_lock, settings):
     """ Function for handling process jobs
 
     q1: the first job queue (scaling + color reduction)
@@ -692,6 +700,7 @@ def process_worker(q1, q2, progress, layers, settings):
     layers: a nested list. layers[file_index][color_index] is a boolean that
         indicates if the layer for the file at file_index with the color
         at color_index has been traced
+    layers_lock: a lock that must be aquired for reading and writing the layers object in q2 jobs
     settings: a dictionary that must contain the following keys:
         quantization, dither, remap, stack, prescale, despeckle, smoothcorners,
         optimizepaths, colors, tmp
@@ -703,7 +712,7 @@ def process_worker(q1, q2, progress, layers, settings):
         while not q2.empty():
             try:
                 job_args = q2.get(block=False)
-                q2_job(layers, settings, **job_args)
+                q2_job(layers, layers_lock, settings, **job_args)
                 q2.task_done()
                 progress.value += 1
             except queue.Empty:
@@ -754,6 +763,8 @@ def color_trace_multi(inputs, outputs, colors, processcount, quantization='mc', 
     layers = []
     for i in range(min(len(inputs), len(outputs))):
         layers.append(manager.list())
+    # and make a lock for reading and modifying layers
+    layers_lock = multiprocessing.Lock()
 
     # create a shared memory counter of completed tasks for measuring progress
     progress = multiprocessing.Value('i', 0)
@@ -761,7 +772,7 @@ def color_trace_multi(inputs, outputs, colors, processcount, quantization='mc', 
     # create and start processes
     processes = []
     for i in range(processcount):
-        p = multiprocessing.Process(target=process_worker, args=(q1, q2, progress, layers, locals()))
+        p = multiprocessing.Process(target=process_worker, args=(q1, q2, progress, layers, layers_lock, locals()))
         p.name = "color_trace worker #" + str(i)
         p.start()
         processes.append(p)
