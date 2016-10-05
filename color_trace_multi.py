@@ -614,7 +614,7 @@ def q1_job(q2, total, layers, settings, findex, input, output):
         palette = make_palette(this_reduced)
 
         # update total based on the number of colors in palette
-        total -= settings['colors'] - len(palette)
+        total.value -= settings['colors'] - len(palette)
 
         # initialize layers for the file at findex
         layers[findex] += [False] * len(palette)
@@ -636,7 +636,7 @@ def q2_job(layers, layers_lock, settings, width, color, palette, findex, cindex,
     """ Isolates a color and traces it
 
     layers: an ordered list of traced layers as SVGFiles
-    layers_lock: a lock that must be aquired for reading and writing the layers object
+    layers_lock: a lock that must be acquired for reading and writing the layers object
     settings: a dictionary that must contain the following keys:
         stack, despeckle, smoothcorners, optimizepaths, tmp
         See color_trace_multi for details of the values
@@ -705,7 +705,7 @@ def process_worker(q1, q2, progress, total, layers, layers_lock, settings):
     layers: a nested list. layers[file_index][color_index] is a boolean that
         indicates if the layer for the file at file_index with the color
         at color_index has been traced
-    layers_lock: a lock that must be aquired for reading and writing the layers object in q2 jobs
+    layers_lock: a lock that must be acquired for reading and writing the layers object in q2 jobs
     settings: a dictionary that must contain the following keys:
         quantization, dither, remap, stack, prescale, despeckle, smoothcorners,
         optimizepaths, colors, tmp
@@ -776,7 +776,7 @@ def color_trace_multi(inputs, outputs, colors, processcount, quantization='mc', 
     # this is only an estimate because quantization can result in less colors
     # than in the "colors" variable. This value is corrected by q1 tasks to converge
     # on the real total.
-    total = Value('i', len(layers) * colors)
+    total = multiprocessing.Value('i', len(layers) * colors)
 
     # create and start processes
     processes = []
@@ -801,7 +801,7 @@ def color_trace_multi(inputs, outputs, colors, processcount, quantization='mc', 
             sys.stdout.flush()
             time.sleep(0.25)
 
-        sys.stdout.write("\rTracing complete!")
+        sys.stdout.write("\rTracing complete!\n")
 
         # join the queues just in case progress is wrong
         q1.join()
