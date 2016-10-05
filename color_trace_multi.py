@@ -570,10 +570,11 @@ def get_inputs_outputs(arg_inputs, output_pattern="{0}.svg", ignore_duplicates=T
                 yield input_, output
 
 
-def q1_job(q2, layers, settings, findex, input, output):
+def q1_job(q2, total, layers, settings, findex, input, output):
     """ Initializes files, rescales, and performs color reduction
 
     q2: the second job queue (isolation + tracing)
+    total: a value to measure the total number of q2 tasks
     layers: an ordered list of traced layers as SVGFiles
     settings: a dictionary that must contain the following keys:
         colors, quantization, dither, remap, prescale, tmp
@@ -611,6 +612,9 @@ def q1_job(q2, layers, settings, findex, input, output):
             #argparse should have caught this
             raise Exception("One of the arguments 'colors' or 'remap' must be specified")
         palette = make_palette(this_reduced)
+
+        # update total based on the number of colors in palette
+        total -= settings['colors'] - len(palette)
 
         # initialize layers for the file at findex
         layers[findex] += [False] * len(palette)
@@ -661,7 +665,7 @@ def q2_job(layers, layers_lock, settings, width, color, palette, findex, cindex,
         #...or after tracing
         remfiles(this_isolated, this_layer)
 
-    layers_lock.aquire()
+    layers_lock.acquire()
     try:
         # add layer
         layers[findex][cindex] = True
@@ -691,12 +695,13 @@ def q2_job(layers, layers_lock, settings, width, color, palette, findex, cindex,
         remfiles(reduced, *layer_traces)
 
 
-def process_worker(q1, q2, progress, layers, layers_lock, settings):
+def process_worker(q1, q2, progress, total, layers, layers_lock, settings):
     """ Function for handling process jobs
 
     q1: the first job queue (scaling + color reduction)
     q2: the second job queue (isolation + tracing)
     progress: a value to measure the number of completed q2 tasks
+    total: a value to measure the total number of q2 tasks
     layers: a nested list. layers[file_index][color_index] is a boolean that
         indicates if the layer for the file at file_index with the color
         at color_index has been traced
@@ -722,7 +727,7 @@ def process_worker(q1, q2, progress, layers, layers_lock, settings):
         try:
             job_args = q1.get(block=False)
 
-            q1_job(q2, layers, settings, **job_args)
+            q1_job(q2, total, layers, settings, **job_args)
             q1.task_done()
         except queue.Empty:
             time.sleep(.01)
@@ -766,13 +771,17 @@ def color_trace_multi(inputs, outputs, colors, processcount, quantization='mc', 
     # and make a lock for reading and modifying layers
     layers_lock = multiprocessing.Lock()
 
-    # create a shared memory counter of completed tasks for measuring progress
+    # create a shared memory counter of completed and total tasks for measuring progress
     progress = multiprocessing.Value('i', 0)
+    # this is only an estimate because quantization can result in less colors
+    # than in the "colors" variable. This value is corrected by q1 tasks to converge
+    # on the real total.
+    total = Value('i', len(layers) * colors)
 
     # create and start processes
     processes = []
     for i in range(processcount):
-        p = multiprocessing.Process(target=process_worker, args=(q1, q2, progress, layers, layers_lock, locals()))
+        p = multiprocessing.Process(target=process_worker, args=(q1, q2, progress, total, layers, layers_lock, locals()))
         p.name = "color_trace worker #" + str(i)
         p.start()
         processes.append(p)
@@ -787,9 +796,8 @@ def color_trace_multi(inputs, outputs, colors, processcount, quantization='mc', 
 
 
         # show progress until all jobs have been completed
-        total = len(layers) * colors
-        while progress.value < total:
-            sys.stdout.write("\r%.1f%%" % (progress.value / total * 100))
+        while progress.value < total.value:
+            sys.stdout.write("\r%.1f%%" % (progress.value / total.value * 100))
             sys.stdout.flush()
             time.sleep(0.25)
 
