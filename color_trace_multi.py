@@ -614,14 +614,19 @@ def q1_job(q2, total, layers, settings, findex, input, output):
         palette = make_palette(this_reduced)
 
         # update total based on the number of colors in palette
-        total.value -= settings['colors'] - len(palette)
-
+        if settings['colors'] is not None:
+            total.value -= settings['colors'] - len(palette)
+        else:
+            total.value -= settings['palettesize'] - len(palette)
         # initialize layers for the file at findex
         layers[findex] += [False] * len(palette)
 
+        # get input image width
+        width = get_width(input)
+
         # add jobs to the second job queue
         for i, color in enumerate(palette):
-            q2.put({ 'width': get_width(input), 'color': color, 'palette': palette, 'reduced': this_reduced, 'output': output, 'findex': findex, 'cindex': i })
+            q2.put({ 'width': width, 'color': color, 'palette': palette, 'reduced': this_reduced, 'output': output, 'findex': findex, 'cindex': i })
 
     except (Exception, KeyboardInterrupt) as e:
         # delete temporary files on exception...
@@ -773,10 +778,21 @@ def color_trace_multi(inputs, outputs, colors, processcount, quantization='mc', 
 
     # create a shared memory counter of completed and total tasks for measuring progress
     progress = multiprocessing.Value('i', 0)
-    # this is only an estimate because quantization can result in less colors
-    # than in the "colors" variable. This value is corrected by q1 tasks to converge
-    # on the real total.
-    total = multiprocessing.Value('i', len(layers) * colors)
+    if colors is not None:
+        # this is only an estimate because quantization can result in less colors
+        # than in the "colors" variable. This value is corrected by q1 tasks to converge
+        # on the real total.
+        total = multiprocessing.Value('i', len(layers) * colors)
+    elif remap is not None:
+        # get the number of colors in the palette image
+        palettesize = len(make_palette(remap))
+        # this is only an estimate because remapping can result in less colors
+        # than in the remap variable. This value is corrected by q1 tasks to converge
+        # on the real total.
+        total = multiprocessing.Value('i', len(layers) * palettesize)
+    else:
+        #argparse should have caught this
+        raise Exception("One of the arguments 'colors' or 'remap' must be specified")
 
     # create and start processes
     processes = []
