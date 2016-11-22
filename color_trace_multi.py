@@ -881,11 +881,7 @@ def main(args=None):
         color_trace_kwargs.pop(k)
 
 ##    color_trace_multi(inputs, outputs, colors, dither=dither, **color_trace_kwargs)
-    try:
-        color_trace_multi(inputs, outputs, colors, processcount, dither=dither, **color_trace_kwargs)
-    except BaseException as e:
-        print(e, file=sys.stderr)
-        sys.exit(1)
+    color_trace_multi(inputs, outputs, colors, processcount, dither=dither, **color_trace_kwargs)
 
 
 
