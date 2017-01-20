@@ -8,7 +8,7 @@ Traces multiple color images using potrace. This is similar to Inkscape's Trace 
 
 Requires Python 3.2 (or later) and the lxml library for Python 3.2 (or later).
 
-Also, several programs must be installed for coor_trace.py to function: pngquant, pngnq, ImageMagick's convert and identify, and Potrace. Their executables must be accessible from the environment path, or the location of the executables must be entered into color_trace.py (variables PNGQUANT_PATH, PNGNQ_PATH, IMAGEMAGICK_CONVERT_PATH, IMAGEMAGICK_IDENTIFY_PATH, and POTRACE_PATH).
+Also, several programs must be installed for color_trace.py to function: pngquant, pngnq, ImageMagick's convert and identify, and Potrace. Their executables must be accessible from the environment path, or the location of the executables must be entered into color_trace.py (variables PNGQUANT_PATH, PNGNQ_PATH, IMAGEMAGICK_CONVERT_PATH, IMAGEMAGICK_IDENTIFY_PATH, and POTRACE_PATH).
 
 ----------------
 
