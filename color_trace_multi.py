@@ -736,6 +736,9 @@ def process_worker(q1, q2, progress, total, layers, layers_lock, settings):
             q1.task_done()
         except queue.Empty:
             time.sleep(.01)
+        
+        if q2.empty() and q1.empty():
+            break
 
 def color_trace_multi(inputs, outputs, colors, processcount, quantization='mc', dither=None,
     remap=None, stack=False, prescale=2, despeckle=2, smoothcorners=1.0, optimizepaths=0.2):
