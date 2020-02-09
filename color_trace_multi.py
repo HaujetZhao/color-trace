@@ -347,6 +347,10 @@ def isolate_color(src,target_tmp ,destlayer, target_color, palette, stack=False)
     process_command(command, stdinput=stdinput)
 
 
+def fill_with_color(src, dest):
+    command = '"{convert}" "{src}" -fill "{color}" +opaque none "{dest}"'.format(
+        convert = IMAGEMAGICK_CONVERT_PATH, src=src, color="#000000", dest=dest)
+    process_command(command)
 
 def get_width(src):
     """return width of src image in pixels"""
@@ -496,6 +500,9 @@ def get_args(cmdargs=None):
         type=functools.partial(check_range, 0, 5, float, "a floating-point number"), default=0.2,
         help="set Bezier curve optimization: 0 for least, 5 for most "
               "(default: 0.2)")
+    parser.add_argument('-bg',
+        '--background', action='store_true',
+        help=("set first color as background and posibly optimize final svg"))
     # other options
     parser.add_argument('-v',
         '--verbose', action='store_true',
@@ -659,8 +666,14 @@ def q2_job(layers, layers_lock, settings, width, color, palette, findex, cindex,
     this_trace = os.path.abspath(os.path.join(settings['tmp'], trace_format.format(findex, cindex)))
 
     try:
-        # isolate & trace for this color, add to svg stack
-        isolate_color(reduced, this_isolated, this_layer, color, palette, stack=settings['stack'])
+        # if color index is 0 and -bg flag is activated
+        # simply fill image with matching color else isolate color
+        if cindex == 0 and settings['background']:
+            verbose("Index {}".format(color))
+            fill_with_color(reduced, this_layer)
+        else:
+            isolate_color(reduced, this_isolated, this_layer, color, palette, stack=settings['stack'])
+        # trace for this color, add to svg stack
         trace(this_layer, this_trace, color, settings['despeckle'], settings['smoothcorners'], settings['optimizepaths'], width)
     except (Exception, KeyboardInterrupt) as e:
         # delete temporary files on exception...
@@ -738,7 +751,7 @@ def process_worker(q1, q2, progress, total, layers, layers_lock, settings):
             time.sleep(.01)
 
 def color_trace_multi(inputs, outputs, colors, processcount, quantization='mc', dither=None,
-    remap=None, stack=False, prescale=2, despeckle=2, smoothcorners=1.0, optimizepaths=0.2):
+    remap=None, stack=False, prescale=2, despeckle=2, smoothcorners=1.0, optimizepaths=0.2, background=False):
     """color trace input images with specified options
 
     inputs: list of input paths, source png files
@@ -759,6 +772,7 @@ def color_trace_multi(inputs, outputs, colors, processcount, quantization='mc', 
     despeckle: supress speckles of this many pixels
     smoothcorners: corner smoothing: 0 for no smoothing, 1.334 for max
     optimizepaths: Bezier curve optimization: 0 for least, 5 for most
+    background: Set first color as background across whole image reducing svg size
 """
     tmp = tempfile.mkdtemp()
 

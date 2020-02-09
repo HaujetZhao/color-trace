@@ -62,6 +62,10 @@ optional arguments:
   -O tolerance, --optimizepaths tolerance
                         set Bezier curve optimization: 0 for least, 5 for most
                         (default: 0.2)
+  -bg, --background
+                        set first color as background. This will reduce final
+                        svg filesize because in some cases its not needed.
+                        (default: False)
   -v, --verbose         print details about commands executed by this script
   --version             show program's version number and exit
 
