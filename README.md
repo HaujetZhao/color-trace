@@ -109,7 +109,7 @@ optional arguments:
 
 ```
 $ python color-trace.py -i 位图.png -c 3 -o 矢量.svg
-$ python color-trace.py --i 文件夹/*.png -c 3 -d 输出文件夹
+$ python color-trace.py -i 文件夹/*.png -c 3 -d 输出文件夹
 ```
 
 ## 🔮 背景
