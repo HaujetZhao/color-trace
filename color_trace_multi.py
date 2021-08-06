@@ -47,6 +47,7 @@ import queue
 import tempfile
 import time
 import shlex
+from pprint import pprint
 
 from svg_stack import svg_stack
 
@@ -67,22 +68,23 @@ def 处理命令(命令, stdinput=None, stdout_=False, stderr_=False):
     stdout_: True to receive command's stdout in the return value
     stderr_: True to receive command's stderr in the return value
 """
-    汇报(命令)
     stdin_pipe = (subprocess.PIPE if stdinput is not None else None)
     stdout_pipe = (subprocess.PIPE if stdout_ is True else None)
     stderr_pipe = subprocess.PIPE
 
-    # process = subprocess.Popen(command, stdin=stdin_pipe, stderr=stderr_pipe, stdout=stdout_pipe,
-    # shell=True, creationflags=subprocess.SW_HIDE)
-    进程 = subprocess.Popen(shlex.split(命令), stdin=stdin_pipe, stderr=stderr_pipe, stdout=stdout_pipe,
+    汇报(f'命令：{命令}')
+    进程 = subprocess.Popen(shlex.split(命令),
+                          stdin=stdin_pipe,
+                          stderr=stderr_pipe,
+                          stdout=stdout_pipe,
                           shell=True)
 
-    stdoutput, stderror = 进程.communicate(stdinput)
-    # print(stderror)
+    stdoutput, stderror = 进程.communicate(input=stdinput)
+
     返回码 = 进程.wait()
     if 返回码 != 0:
-        # Exception(stderror)
-        Exception(stderror.decode())
+        raise Exception(stderror.decode(encoding=sys.getfilesystemencoding()))
+
     if stdout_ and not stderr_:
         return stdoutput
     elif stderr_ and not stdout_:
@@ -133,19 +135,14 @@ def 量化(源, 量化目标, 颜色数, 算法='mc', 拟色=None):
 
     elif 算法 == 'mc':  # median-cut 中切
         if 拟色 is None:
-            拟色选项 = '-nofs '
+            拟色选项 = '--nofs'
         elif 拟色 == 'floydsteinberg':
             拟色选项 = ''
         else:
             raise ValueError("对 'mc' 量化方法使用了错误的拟色类型：'{0}' ".format(拟色))
         # 因为 pngquant 不能保存到中文路径，所以使用 stdin/stdout 操作 pngquant
-        命令 = '"{pngquant}" {dither}-force {colors}'.format(
-            pngquant=PNGQUANT_路径, dither=拟色选项, colors=颜色数)
-        with open(源, 'rb') as 源文件:
-            stdinput = 源文件.read()
-        stdoutput = 处理命令(命令, stdinput=stdinput, stdout_=True)
-        with open(量化目标, 'wb') as 目标文件:
-            目标文件.write(stdoutput)
+        命令 = f'{PNGQUANT_路径} --force {拟色选项} {颜色数} - < "{源}" > "{量化目标}"'
+        stdoutput = 处理命令(命令)
 
     elif 算法 == 'as':  # adaptive spatial subdivision 自适应空间细分
         if 拟色 is None:
@@ -179,6 +176,8 @@ def 量化(源, 量化目标, 颜色数, 算法='mc', 拟色=None):
 
 
 def 调色板重映射(源, 重映射目标, 调色板图像, 拟色=None):
+    print('123456789')
+    input('1234567')
     """用调色板图像的颜色重映射源图像，保存到重映射目标
 
     源: 源图像路径
@@ -380,12 +379,15 @@ def 描摹(源, 描摹目标, 输出颜色, 抑制斑点像素数=2, 平滑转�
 
     if 宽度 is not None:
         宽度 = 宽度 / POTRACE_DPI
-    命令 = ('"{potrace}" --svg -o "{dest}" -C "{outcolor}" -t {despeckle} '
-          '-a {smoothcorners} -O {optimizepaths} {W}{width} "{src}"').format(
-        potrace=POTRACE_路径, dest=描摹目标, outcolor=输出颜色,
-        despeckle=抑制斑点像素数, smoothcorners=平滑转角, optimizepaths=优化路径,
-        W=('-W ' if 宽度 is not None else ''), width=(宽度 if 宽度 is not None else ''),
-        src=源)
+    # 命令 = ('"{potrace}" --svg -o "{dest}" -C "{outcolor}" -t {despeckle} '
+    #       '-a {smoothcorners} -O {optimizepaths} {W}{width} "{src}"').format(
+    #     potrace=POTRACE_路径, dest=描摹目标, outcolor=输出颜色,
+    #     despeckle=抑制斑点像素数, smoothcorners=平滑转角, optimizepaths=优化路径,
+    #     W=('-W ' if 宽度 is not None else ''), width=(宽度 if 宽度 is not None else ''),
+    #     src=源)
+    宽度参数 = f'-W {宽度}' if 宽度 is not None else ''
+    命令 = f'''{POTRACE_路径} --svg -o "{描摹目标}" -C "{输出颜色}" -t {抑制斑点像素数} -a {平滑转角} -O {优化路径} 
+                {宽度参数} "{源}"'''
 
     处理命令(命令)
 
@@ -480,7 +482,7 @@ def 获得参数(cmdargs=None):
                         help="stack color traces (recommended for more accurate output)")
     parser.add_argument('-p',
                         '--prescale', metavar='size',
-                        type=functools.partial(检查范围, 0, None, float, "a floating-point number"), default=2,
+                        type=functools.partial(检查范围, 0, None, float, "a floating-point number"), default=1,
                         help="scale image this much before tracing for greater detail (default: 2). "
                              "The image's output size is not changed. (2 is recommended, or 3 for smaller "
                              "details.)")
@@ -576,7 +578,7 @@ def 得到输入输出(arg_inputs, output_pattern="{0}.svg", ignore_duplicates=T
                 yield input_, output
 
 
-def 队列1_任务(队列2, 总数, 图层, 设置, findex, input, output):
+def 队列1_任务(队列2, 总数, 图层, 设置, findex, 输入文件, output):
     """ 初始化文件、重新缩放、缩减颜色
 
     队列2: 第二个任务列表 (颜色孤立 + 临摹)
@@ -604,7 +606,8 @@ def 队列1_任务(队列2, 总数, 图层, 设置, findex, input, output):
             滤镜 = 'point'
         else:
             滤镜 = 'lanczos'
-        重缩放(input, 缩放文件, 设置['prescale'], 滤镜=滤镜)
+        重缩放(输入文件, 缩放文件, 设置['prescale'], 滤镜=滤镜)
+
 
         if 设置['颜色数'] is not None:
             量化(缩放文件, 减色文件, 设置['颜色数'], 算法=设置['quantization'], 拟色=设置['拟色'])
@@ -624,16 +627,16 @@ def 队列1_任务(队列2, 总数, 图层, 设置, findex, input, output):
         图层[findex] += [False] * len(调色板)
 
         # 得到图像宽度
-        宽度 = 得到宽度(input)
+        宽度 = 得到宽度(输入文件)
 
         # 添加任务到第二个任务队列
         for i, 颜色 in enumerate(调色板):
             队列2.put(
-                {'width': 宽度, 'color': 颜色, 'palette': 调色板, 'reduced': 减色文件, 'output': output, 'findex': findex, 'cindex': i})
+                {'宽度': 宽度, '颜色': 颜色, '调色板': 调色板, '已缩减图像': 减色文件, '输出路径': output, '文件索引': findex, '颜色索引': i})
 
     except (Exception, KeyboardInterrupt) as e:
         # 发生错误时删除临时文件
-        删除文件(缩放文件, 减色文件)
+        # 删除文件(缩放文件, 减色文件)
         raise e
     else:
         # 描摹后删除文件
@@ -773,6 +776,7 @@ def 彩色描摹(输入列表, 输出列表, 颜色数, 进程数, quantization=
         (等同于 potrace --opttolerance)
     背景：设置第一个颜色为整个 svg 背景，以减小 svg 体积
 """
+
     临时文件 = tempfile.mkdtemp()
 
     # 新建两个任务队列
@@ -822,9 +826,6 @@ def 彩色描摹(输入列表, 输出列表, 颜色数, 进程数, quantization=
         本地.pop('第二个任务队列')
         本地.pop('管理器')
 
-        # from pprint import pprint
-        # pprint(本地)
-
         进程 = multiprocessing.Process(target=进程处理, args=(第一个任务队列, 第二个任务队列, 已完成任务数, 总任务数, 图层, 图层锁, 本地))
         进程.name = "color_trace worker #" + str(i)
         进程.start()
@@ -836,7 +837,7 @@ def 彩色描摹(输入列表, 输出列表, 颜色数, 进程数, quantization=
             汇报(输入, ' -> ', 输出)
 
             # add a job to the first job queue
-            第一个任务队列.put({'input': 输入, 'output': 输出, 'findex': 索引})
+            第一个任务队列.put({'输入文件': 输入, 'output': 输出, 'findex': 索引})
 
         # show progress until all jobs have been completed
         while 已完成任务数.value < 总任务数.value:
