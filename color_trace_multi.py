@@ -24,15 +24,15 @@
 
 
 # 外部程序的路径
-PNGQUANT_路径 = 'pngquant'
-PNGNQ_路径 = 'pngnq'
-IMAGEMAGICK_CONVERT_路径 = 'magick convert'
-IMAGEMAGICK_IDENTIFY_路径 = 'magick identify'
-POTRACE_路径 = 'potrace'
+pngquant_命令 = 'pngquant'
+pngnq_路径 = 'pngnq'
+ImageMagick_convert_命令 = 'magick convert'
+ImageMagick_identify_命令 = 'magick identify'
+potrace_命令 = 'potrace'
+potrace_选项 = ''
 
-POTRACE_DPI = 90.0  # potrace docs 说它是 72, 但这个数值似乎效果最好
 命令行最长 = 1900  # 命令行长度限制
-日志级别 = 0  # 不止是一个常数，它也会爱 -v/--verbose 选项影响
+汇报级别 = 0  # 不止是一个常数，它也会爱 -v/--verbose 选项影响
 
 版本 = '1.01'
 
@@ -53,7 +53,7 @@ from svg_stack import svg_stack
 
 
 def 汇报(*args, level=1):
-    if 日志级别 >= level:
+    if 汇报级别 >= level:
         print(*args)
 
 
@@ -104,7 +104,7 @@ def 重缩放(源, 目标, 缩放, 滤镜='lanczos'):
         shutil.copyfile(源, 目标)
     else:
         命令 = '{convert} "{src}" -filter {filter} -resize {resize}% "{dest}"'.format(
-            convert=IMAGEMAGICK_CONVERT_路径, src=源, filter=滤镜, resize=缩放 * 100,
+            convert=ImageMagick_convert_命令, src=源, filter=滤镜, resize=缩放 * 100,
             dest=目标)
         处理命令(命令)
 
@@ -141,7 +141,7 @@ def 量化(源, 量化目标, 颜色数, 算法='mc', 拟色=None):
         else:
             raise ValueError("对 'mc' 量化方法使用了错误的拟色类型：'{0}' ".format(拟色))
         # 因为 pngquant 不能保存到中文路径，所以使用 stdin/stdout 操作 pngquant
-        命令 = f'{PNGQUANT_路径} --force {拟色选项} {颜色数} - < "{源}" > "{量化目标}"'
+        命令 = f'{pngquant_命令} --force {拟色选项} {颜色数} - < "{源}" > "{量化目标}"'
         stdoutput = 处理命令(命令)
 
     elif 算法 == 'as':  # adaptive spatial subdivision 自适应空间细分
@@ -152,7 +152,7 @@ def 量化(源, 量化目标, 颜色数, 算法='mc', 拟色=None):
         else:
             raise ValueError("Invalid dither type '{0}' for 'as' quantization".format(拟色))
         命令 = '{convert} "{src}" -dither {dither} -colors {colors} "{dest}"'.format(
-            convert=IMAGEMAGICK_CONVERT_路径, src=源, dither=拟色选项, colors=颜色数, dest=量化目标)
+            convert=ImageMagick_convert_命令, src=源, dither=拟色选项, colors=颜色数, dest=量化目标)
         处理命令(命令)
 
     elif 算法 == 'nq':  # neuquant
@@ -165,7 +165,7 @@ def 量化(源, 量化目标, 颜色数, 算法='mc', 拟色=None):
         else:
             raise ValueError("Invalid dither type '{0}' for 'nq' quantization".format(拟色))
         命令 = '"{pngnq}" -f {dither}-d "{destdir}" -n {colors} -e {ext} "{src}"'.format(
-            pngnq=PNGNQ_路径, dither=拟色选项, destdir=destdir, colors=颜色数, ext=ext, src=源)
+            pngnq=pngnq_路径, dither=拟色选项, destdir=destdir, colors=颜色数, ext=ext, src=源)
         处理命令(命令)
         # 因为 pngnq 不支持保存到自定义目录，所以先输出文件到当前目录，再移动到量化目标
         旧输出 = os.path.join(destdir, os.path.splitext(os.path.basename(源))[0] + ext)
@@ -176,8 +176,6 @@ def 量化(源, 量化目标, 颜色数, 算法='mc', 拟色=None):
 
 
 def 调色板重映射(源, 重映射目标, 调色板图像, 拟色=None):
-    print('123456789')
-    input('1234567')
     """用调色板图像的颜色重映射源图像，保存到重映射目标
 
     源: 源图像路径
@@ -197,7 +195,7 @@ def 调色板重映射(源, 重映射目标, 调色板图像, 拟色=None):
     else:
         raise ValueError("不合理的重映射拟色类型：'{0}' ".format(拟色))
     命令 = '{convert} "{src}" -dither {dither} -remap "{paletteimg}" "{dest}"'.format(
-        convert=IMAGEMAGICK_CONVERT_路径, src=源, dither=拟色选项, paletteimg=调色板图像, dest=重映射目标)
+        convert=ImageMagick_convert_命令, src=源, dither=拟色选项, paletteimg=调色板图像, dest=重映射目标)
     处理命令(命令)
 
 
@@ -205,7 +203,7 @@ def 制作调色板(源图像):
     """从源图像得到独特的颜色，返回 #rrggbb 16进制颜色"""
 
     命令 = '{convert} "{srcimage}" -unique-colors -compress none ppm:-'.format(
-        convert=IMAGEMAGICK_CONVERT_路径, srcimage=源图像)
+        convert=ImageMagick_convert_命令, srcimage=源图像)
     stdoutput = 处理命令(命令, stdout_=True)
 
     # separate stdout ppm image into its colors
@@ -319,7 +317,7 @@ def 孤立颜色(源, 目标临时文件, 目标图层, 目标颜色, 调色板,
     # 新建一个很长的命令，当它达到足够长度时就执行
     # 因为分别执行填充命令非常的慢
     last_iteration = len(调色板) - 1  # new
-    命令前缀 = '{convert} "{src}" '.format(convert=IMAGEMAGICK_CONVERT_路径, src=源)
+    命令前缀 = '{convert} "{src}" '.format(convert=ImageMagick_convert_命令, src=源)
     命令后缀 = ' "{target}"'.format(target=目标临时文件)
     命令中间 = ''
 
@@ -342,27 +340,27 @@ def 孤立颜色(源, 目标临时文件, 目标图层, 目标颜色, 调色板,
 
     # 现在将前景变黑，背景变白
     命令 = '{convert} "{src}" -fill "{fillbg}" -opaque "{colorbg}" -fill "{fillfg}" -opaque "{colorfg}" "{dest}"'.format(
-        convert=IMAGEMAGICK_CONVERT_路径, src=目标临时文件, fillbg=背景白, colorbg=背景接近白,
+        convert=ImageMagick_convert_命令, src=目标临时文件, fillbg=背景白, colorbg=背景接近白,
         fillfg=前景黑, colorfg=前景接近黑, dest=目标图层)
     处理命令(命令, stdinput=stdinput)
 
 
 def 使用颜色填充(源, 目标):
     命令 = '{convert} "{src}" -fill "{color}" +opaque none "{dest}"'.format(
-        convert=IMAGEMAGICK_CONVERT_路径, src=源, color="#000000", dest=目标)
+        convert=ImageMagick_convert_命令, src=源, color="#000000", dest=目标)
     处理命令(命令)
 
 
 def 得到宽度(源):
     """返回头像宽多少像素"""
     命令 = '{identify} -ping -format "%w" "{src}"'.format(
-        identify=IMAGEMAGICK_IDENTIFY_路径, src=源)
+        identify=ImageMagick_identify_命令, src=源)
     stdoutput = 处理命令(命令, stdout_=True)
     宽 = int(stdoutput)
     return 宽
 
 
-def 描摹(源, 描摹目标, 输出颜色, 抑制斑点像素数=2, 平滑转角=1.0, 优化路径=0.2, 宽度=None):
+def 描摹(源, 描摹目标, 输出颜色, 抑制斑点像素数=2, 平滑转角=1.0, 优化路径=0.2, 宽度=None, 高度=None, 分辨率=None):
     """在指定的颜色、选项下，运行 potrace
 
     源: 源文件
@@ -377,17 +375,13 @@ def 描摹(源, 描摹目标, 输出颜色, 抑制斑点像素数=2, 平滑转�
     宽度: 输出的 svg 像素宽度, 默认 None. 保持原始比例.
 """
 
-    if 宽度 is not None:
-        宽度 = 宽度 / POTRACE_DPI
-    # 命令 = ('"{potrace}" --svg -o "{dest}" -C "{outcolor}" -t {despeckle} '
-    #       '-a {smoothcorners} -O {optimizepaths} {W}{width} "{src}"').format(
-    #     potrace=POTRACE_路径, dest=描摹目标, outcolor=输出颜色,
-    #     despeckle=抑制斑点像素数, smoothcorners=平滑转角, optimizepaths=优化路径,
-    #     W=('-W ' if 宽度 is not None else ''), width=(宽度 if 宽度 is not None else ''),
-    #     src=源)
-    宽度参数 = f'-W {宽度}' if 宽度 is not None else ''
-    命令 = f'''{POTRACE_路径} --svg -o "{描摹目标}" -C "{输出颜色}" -t {抑制斑点像素数} -a {平滑转角} -O {优化路径} 
-                {宽度参数} "{源}"'''
+    宽度参数 = f'--width {宽度}' if 宽度 is not None else ''
+    高度参数 = f'--height {高度}' if 高度 is not None else ''
+    分辨率参数 = f'--resolution {分辨率}' if 分辨率 is not None else ''
+
+    命令 = f'''{potrace_命令} --svg -o "{描摹目标}" -C "{输出颜色}" -t {抑制斑点像素数} -a {平滑转角} -O {优化路径} 
+                {宽度参数} {高度参数} {分辨率参数} "{源}"'''
+    汇报(命令)
 
     处理命令(命令)
 
@@ -414,123 +408,6 @@ def 检查范围(min, max, typefunc, typename, strval):
         raise argparse.ArgumentTypeError(msg)
     return val
 
-
-def 获得参数(cmdargs=None):
-    """return parser and namespace of parsed command-line arguments
-
-    cmdargs: if specified, a list of command-line arguments to use instead of
-        those provided to this script (i.e. a string that has been shlex.split)
-"""
-    parser = argparse.ArgumentParser(description="trace a color image with "
-                                                 "potrace, output color SVG file", add_help=False, prefix_chars='-/')
-    # help also accessible via /?
-    parser.add_argument(
-        '-h', '--help', '/?',
-        action='help',
-        help="show this help message and exit")
-    # file io arguments
-    parser.add_argument('-i',
-                        '--input', metavar='src', nargs='+', required=True,
-                        help="path of input image(s) to trace, supports * and ? wildcards")
-    parser.add_argument('-o',
-                        '--output', metavar='dest',
-                        help="path of output image to save to, supports * wildcard")
-    parser.add_argument('-d',
-                        '--directory', metavar='destdir',
-                        help="outputs to destdir")
-    # processing arguments
-    parser.add_argument('-C',
-                        '--cores', metavar='N',
-                        type=functools.partial(检查范围, 0, None, int, "an integer"),
-                        help="number of cores to use for image processing. "
-                             "Ignored if processing a single file with 1 color "
-                             "(default tries to use all cores)")
-    # color trace options
-    # make colors & palette mutually exclusive
-    color_palette_group = parser.add_mutually_exclusive_group(required=True)
-    color_palette_group.add_argument('-c',
-                                     '--colors', metavar='N',
-                                     type=functools.partial(检查范围, 0, 256, int, "an integer"),
-                                     help="[required unless -p is used instead] "
-                                          "number of colors to reduce each image to before tracing, up to 256. "
-                                          "Value of 0 skips color reduction (not recommended unless images "
-                                          "are already color-reduced)")
-    parser.add_argument('-q',
-                        '--quantization', metavar='algorithm',
-                        choices=('mc', 'as', 'nq'), default='mc',
-                        help="color quantization algorithm: mc, as, or nq. "
-                             "'mc' (Median-Cut, default); "
-                             "'as' (Adaptive Spatial Subdivision, may result in fewer colors); "
-                             "'nq' (NeuQuant, for hundreds of colors). Disabled if --colors 0")
-    # make --floydsteinberg and --riemersma dithering mutually exclusive
-    dither_group = parser.add_mutually_exclusive_group()
-    dither_group.add_argument('-fs',
-                              '--floydsteinberg', action='store_true',
-                              help="enable Floyd-Steinberg dithering (for any quantization or -p/--palette)."
-                                   " Warning: any dithering will greatly increase output svg's size and complexity.")
-    dither_group.add_argument('-ri',
-                              '--riemersma', action='store_true',
-                              help="enable Rimersa dithering (only for Adaptive Spatial Subdivision quantization or -p/--palette)")
-    color_palette_group.add_argument('-r',
-                                     '--remap', metavar='paletteimg',
-                                     help=("use a custom palette image for color reduction [overrides -c "
-                                           "and -q]"))
-    # image options
-    parser.add_argument('-s',
-                        '--stack',
-                        action='store_true',
-                        help="stack color traces (recommended for more accurate output)")
-    parser.add_argument('-p',
-                        '--prescale', metavar='size',
-                        type=functools.partial(检查范围, 0, None, float, "a floating-point number"), default=1,
-                        help="scale image this much before tracing for greater detail (default: 2). "
-                             "The image's output size is not changed. (2 is recommended, or 3 for smaller "
-                             "details.)")
-    # potrace options
-    parser.add_argument('-D',
-                        '--despeckle', metavar='size',
-                        type=functools.partial(检查范围, 0, None, int, "an integer"), default=2,
-                        help='supress speckles of this many pixels (default: 2)')
-    parser.add_argument('-S',
-                        '--smoothcorners', metavar='threshold',
-                        type=functools.partial(检查范围, 0, 1.334, float, "a floating-point number"), default=1.0,
-                        help="set corner smoothing: 0 for no smoothing, 1.334 for max "
-                             "(default: 1.0)")
-    parser.add_argument('-O',
-                        '--optimizepaths', metavar='tolerance',
-                        type=functools.partial(检查范围, 0, 5, float, "a floating-point number"), default=0.2,
-                        help="set Bezier curve optimization: 0 for least, 5 for most "
-                             "(default: 0.2)")
-    parser.add_argument('-bg',
-                        '--background', action='store_true',
-                        help=("set first color as background and posibly optimize final svg"))
-    # other options
-    parser.add_argument('-v',
-                        '--verbose', action='store_true',
-                        help="print details about commands executed by this script")
-    parser.add_argument('--version', action='version',
-                        version='%(prog)s {ver}'.format(ver=版本))
-
-    if cmdargs is None:
-        args = parser.parse_args()
-    else:
-        args = parser.parse_args(cmdargs)
-
-    # with multiple inputs, --output must use at least one * wildcard
-    multi_inputs = False
-    for i, input_ in enumerate(得到输入输出(args.input)):
-        if i:
-            multi_inputs = True
-            break
-    if multi_inputs and args.output is not None and '*' not in args.output:
-        parser.error("argument -o/--output: must contain '*' wildcard when using multiple input files")
-
-    # 'riemersma' dithering is only allowed with 'as' quantization or --palette option
-    if args.riemersma:
-        if args.quantization != 'as' and args.palette is None:
-            parser.error("argument -ri/--riemersma: only allowed with 'as' quantization")
-
-    return args
 
 
 def 转义括号(string):
@@ -627,12 +504,16 @@ def 队列1_任务(队列2, 总数, 图层, 设置, findex, 输入文件, output
         图层[findex] += [False] * len(调色板)
 
         # 得到图像宽度
-        宽度 = 得到宽度(输入文件)
+        # 优先使用用户设置的宽度，如果没设置，那就去获得原来的宽度
+        宽度 = 设置['width'] if 设置['width'] else f'{得到宽度(输入文件)}pt'
+        高度 = 设置['height']
+        分辨率 = 设置['resolution']
+
 
         # 添加任务到第二个任务队列
         for i, 颜色 in enumerate(调色板):
             队列2.put(
-                {'宽度': 宽度, '颜色': 颜色, '调色板': 调色板, '已缩减图像': 减色文件, '输出路径': output, '文件索引': findex, '颜色索引': i})
+                {'宽度': 宽度, '高度': 高度, '分辨率': 分辨率, '颜色': 颜色, '调色板': 调色板, '已缩减图像': 减色文件, '输出路径': output, '文件索引': findex, '颜色索引': i})
 
     except (Exception, KeyboardInterrupt) as e:
         # 发生错误时删除临时文件
@@ -643,7 +524,7 @@ def 队列1_任务(队列2, 总数, 图层, 设置, findex, 输入文件, output
         删除文件(缩放文件)
 
 
-def 队列2_任务(图层, 图层锁, 设置, 宽度, 颜色, 调色板, 文件索引, 颜色索引, 已缩减图像, 输出路径):
+def 队列2_任务(图层, 图层锁, 设置, 宽度, 高度, 分辨率, 颜色, 调色板, 文件索引, 颜色索引, 已缩减图像, 输出路径):
     """ 分离颜色并描摹
 
     图层: 一个有序列表，包含了 svg 文件的临摹图层
@@ -673,7 +554,7 @@ def 队列2_任务(图层, 图层锁, 设置, 宽度, 颜色, 调色板, 文件�
         else:
             孤立颜色(已缩减图像, 该文件孤立颜色图像, 该文件图层, 颜色, 调色板, stack=设置['stack'])
         # 描摹这个颜色，添加到 svg 栈
-        描摹(该文件图层, 描摹文件, 颜色, 设置['despeckle'], 设置['smoothcorners'], 设置['optimizepaths'], 宽度)
+        描摹(该文件图层, 描摹文件, 颜色, 设置['despeckle'], 设置['smoothcorners'], 设置['optimizepaths'], 宽度, 高度, 分辨率)
     except (Exception, KeyboardInterrupt) as e:
         # 若出错，则先删掉临时文件
         删除文件(已缩减图像, 该文件孤立颜色图像, 该文件图层, 描摹文件)
@@ -752,14 +633,16 @@ def 进程处理(第一个任务队列, 第二个任务队列, 已完成任务�
 
 
 def 彩色描摹(输入列表, 输出列表, 颜色数, 进程数, quantization='mc', 拟色=None,
-         remap=None, stack=False, prescale=2, despeckle=2, smoothcorners=1.0, optimizepaths=0.2, background=False):
+         remap=None, stack=False, prescale=2, despeckle=2, smoothcorners=1.0,
+         optimizepaths=0.2, background=False,
+         width=None, height=None, resolution=None):
     """用指定选项彩色描摹输入图片
 
     输入列表: 输入文件列表，源 png 文件
     输出列表: 输出文件列表，目标 svg 文件
     颜色数: 要亮化缩减到的颜色质量，0 表示不量化
     进程数: 图像处理进程数
-    量化算法: 要使用的量化算法:
+    quantization: 要使用的量化算法:
         - 'mc' = median-cut 中切 (默认值, 只有少量颜色, 使用 pngquant)
         - 'as' = adaptive spatial subdivision 自适应空间细分 (使用 imagemagick, 产生的颜色更少)
         - 'nq' = neuquant (生成许多颜色, 使用 pngnq)
@@ -767,14 +650,14 @@ def 彩色描摹(输入列表, 输出列表, 颜色数, 进程数, quantization=
         None: 默认，不拟色
         'floydsteinberg': 当使用 'mc', 'as', 和 'nq' 时可用
         'riemersma': 只有使用 'as' 时可用
-    调色板：用于颜色缩减的自定义调色板图像的源（覆盖颜色数和量化）
-    堆栈: 是否堆栈彩色描摹 (可以得到更精确的输出)
-    抑制斑点像素数: 抑制指定像素数量的斑点
-    平滑转角: 平滑转角: 0 表示不平滑, 1.334 为最大
+    remap：用于颜色缩减的自定义调色板图像的源（覆盖颜色数和量化）
+    stack: 是否堆栈彩色描摹 (可以得到更精确的输出)
+    despeckle: 抑制指定像素数量的斑点
+    smoothcorners: 平滑转角: 0 表示不平滑, 1.334 为最大
         (等同于 potrace --alphamax)
-    优化路径: 贝塞尔曲线优化: 0 最小, 5 最大
+    optimizepaths: 贝塞尔曲线优化: 0 最小, 5 最大
         (等同于 potrace --opttolerance)
-    背景：设置第一个颜色为整个 svg 背景，以减小 svg 体积
+    background：设置第一个颜色为整个 svg 背景，以减小 svg 体积
 """
 
     临时文件 = tempfile.mkdtemp()
@@ -870,21 +753,140 @@ def 删除文件(*filepaths):
             os.remove(f)
 
 
-def main(参数=None):
-    """main function to collect arguments and run color_trace_multi
+def 获得参数(cmdargs=None):
+    """返回从命令行得到的参数
 
-    args: if specified, a Namespace of arguments (see argparse) to use instead
-        of those supplied to this script at the command line
+    cmdargs: 如果指定了，则使用这些参数，而不使用提供的脚本的参数
 """
+    parser = argparse.ArgumentParser(description="使用 potrace 将位图转化为彩色 svg 矢量图",
+                                     add_help=False, prefix_chars='-/')
+    # 也可以通过 /? 获得帮助
+    parser.add_argument(
+        '-h', '--help', '/?',
+        action='help',
+        help="显示帮助")
+    # 文件输入输出参数
+    parser.add_argument('-i',
+                        '--input', metavar='src', nargs='+', required=True,
+                        help="输入文件，支持 * 和 ? 通配符")
+    parser.add_argument('-o',
+                        '--output', metavar='dest',
+                        help="输出保存路径，支持 * 通配符")
+    parser.add_argument('-d',
+                        '--directory', metavar='destdir',
+                        help="输出保存的文件夹")
+    # 处理参数
+    parser.add_argument('-C',
+                        '--cores', metavar='N',
+                        type=functools.partial(检查范围, 0, None, int, "an integer"),
+                        help="多进程处理的进程数 (默认使用全部核心)")
+    # 尺寸参数
+    parser.add_argument('--width', metavar='<dim>',
+                        help="输出 svg 图像宽度，例如：6.5in、 15cm、100pt，默认单位是 inch")
+    parser.add_argument('--height', metavar='<dim>',
+                        help="输出 svg 图像高度，例如：6.5in、 15cm、100pt，默认单位是 inch")
+    # parser.add_argument('--resolution', metavar='resolution', default='72',
+    #                     help="输出 svg 图像分辨率，单位 dpi，例如：300、 300x150。默认值：72")
+    # svg 文件似乎没有 dpi 概念
+
+    # 彩色描摹选项
+    # 颜色数和调色板互斥
+    颜色数调色板组 = parser.add_mutually_exclusive_group(required=True)
+    颜色数调色板组.add_argument('-c',
+                                     '--colors', metavar='N',
+                                     type=functools.partial(检查范围, 0, 256, int, "an integer"),
+                                     help="[若未使用 -p 参数，则必须指定该参数] "
+                                          "表示在描摹前，先缩减到多少个颜色。最多 256 个。"
+                                          "0表示跳过缩减颜色 (除非你的图片已经缩减过颜色，否则不推荐0)。")
+    parser.add_argument('-q',
+                        '--quantization', metavar='algorithm',
+                        choices=('mc', 'as', 'nq'), default='mc',
+                        help="颜色量化算法，即缩减颜色算法: mc, as, or nq. "
+                             "'mc' (Median-Cut，中切，由 pngquant 实现，产生较少的颜色，这是默认); "
+                             "'as' (Adaptive Spatial Subdivision 自适应空间细分，由 ImageMagick 实现，产生的颜色更少); "
+                             "'nq' (NeuQuant 神经量化, 可以生成更多的颜色，由 pnqng 实现)。 如果 --colors 0 则不启用量化。")
+
+
+    # make --floydsteinberg and --riemersma dithering mutually exclusive
+    dither_group = parser.add_mutually_exclusive_group()
+    dither_group.add_argument('-fs',
+                              '--floydsteinberg', action='store_true',
+                              help="启用 Floyd-Steinberg 拟色 (适用于所有量化算法或 -p/--palette)."
+                                   "警告: 任何米色算法都会显著的增加输出 svg 图片的大小和复杂度")
+    dither_group.add_argument('-ri',
+                              '--riemersma', action='store_true',
+                              help="启用 Rimersa 拟色 (只适用于 as 量化算法或 -p/--palette)")
+    颜色数调色板组.add_argument('-r',
+                                     '--remap', metavar='paletteimg',
+                                     help=("使用一个自定义调色板图像，用于颜色缩减 [覆盖 -c 和 -q 选项]"))
+    # image options
+    parser.add_argument('-s',
+                        '--stack',
+                        action='store_true',
+                        help="堆栈描摹 (若要更精确的输出，推荐用这个)")
+    parser.add_argument('-p',
+                        '--prescale', metavar='size',
+                        type=functools.partial(检查范围, 0, None, float, "a floating-point number"), default=1,
+                        help="为得到更多的细节，在描摹前，先将图片进行缩放 (默认值: 1)。"
+                             "例如使用 2，描摹前先预放大两倍")
+    # potrace options
+    parser.add_argument('-D',
+                        '--despeckle', metavar='size',
+                        type=functools.partial(检查范围, 0, None, int, "an integer"), default=2,
+                        help='抑制斑点的大小（单位是像素） (默认值：2)')
+    parser.add_argument('-S',
+                        '--smoothcorners', metavar='threshold',
+                        type=functools.partial(检查范围, 0, 1.334, float, "a floating-point number"), default=1.0,
+                        help="转角平滑参数：0 表示不作平滑处理，1.334 是最大。（默认值：1.0")
+    parser.add_argument('-O',
+                        '--optimizepaths', metavar='tolerance',
+                        type=functools.partial(检查范围, 0, 5, float, "a floating-point number"), default=0.2,
+                        help="贝塞尔曲线优化参数: 最小是0，最大是5"
+                             "(默认值：0.2)")
+    parser.add_argument('-bg',
+                        '--background', action='store_true',
+                        help=("将第一个颜色这背景色，并尽可能优化最终的 svg"))
+    # other options
+    parser.add_argument('-v',
+                        '--verbose', action='store_true',
+                        help="打印出运行时的细节")
+    parser.add_argument('--version', action='version',
+                        version='%(prog)s {ver}'.format(ver=版本), help='显示程序版本')
+
+    if cmdargs is None:
+        args = parser.parse_args()
+    else:
+        args = parser.parse_args(cmdargs)
+
+    # with multiple inputs, --output must use at least one * wildcard
+    multi_inputs = False
+    for i, input_ in enumerate(得到输入输出(args.input)):
+        if i:
+            multi_inputs = True
+            break
+    if multi_inputs and args.output is not None and '*' not in args.output:
+        parser.error("argument -o/--output: must contain '*' wildcard when using multiple input files")
+
+    # 'riemersma' dithering is only allowed with 'as' quantization or --palette option
+    if args.riemersma:
+        if args.quantization != 'as' and args.palette is None:
+            parser.error("argument -ri/--riemersma: only allowed with 'as' quantization")
+
+    return args
+
+
+def main(参数=None):
+    """收集参数和运行描摹"""
+
     if 参数 is None:
         参数 = 获得参数()
 
-    # set verbosity level
+    # 设置汇报级别
     if 参数.verbose:
-        global 日志级别
-        日志级别 = 1
+        global 汇报级别
+        汇报级别 = 1
 
-    # set output filename pattern depending on --output argument
+    # 设置输出文件名形式
     if 参数.output is None:
         输出形式 = "{0}.svg"
     elif '*' in 参数.output:
@@ -892,35 +894,39 @@ def main(参数=None):
     else:
         输出形式 = 参数.output
 
-    # --directory: add dir to output paths
+    # --directory: 添加输出文件加路径
     if 参数.directory is not None:
         目标文件夹 = 参数.directory.strip('\"\'')
         输出形式 = os.path.join(目标文件夹, 输出形式)
 
-    # 如果没有指定的话，设置进程数
+    # 如果参数没有指定的话，设置进程数
     if 参数.cores is None:
         try:
             进程数 = multiprocessing.cpu_count()
         except NotImplementedError:
-            汇报("Could not determine total number of cores, assuming 1")
+            汇报("无法确定CPU核心数，因此假定为 1")
             进程数 = 1
     else:
         进程数 = 参数.cores
 
-    # collect only those arguments needed for color_trace_multi
+    # 只收集彩色描摹需要的参数
     输入输出 = zip(*得到输入输出(参数.input, 输出形式))
     try:
         输入列表, 输出列表 = 输入输出
     except ValueError:  # nothing to unpack
         输入列表, 输出列表 = [], []
+
     if 参数.floydsteinberg:
         拟色 = 'floydsteinberg'
     elif 参数.riemersma:
         拟色 = 'riemersma'
     else:
         拟色 = None
+
     颜色数 = 参数.colors
+
     彩色描摹参数 = vars(参数)
+
     for k in ('colors', 'directory', 'input', 'output', 'cores', 'floydsteinberg', 'riemersma', 'verbose'):
         彩色描摹参数.pop(k)
 
