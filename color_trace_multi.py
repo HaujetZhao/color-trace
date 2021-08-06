@@ -5,6 +5,9 @@
 # Written by ukurereh
 # May 20, 2012
 
+# 赵豪杰在 Python3.8 下重写
+# 2021年8月5日
+
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation; either version 2 of the License, or
@@ -20,19 +23,18 @@
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 
-# External program commands. Replace with paths to external programs as needed.
-PNGQUANT_PATH               = 'pngquant'
-PNGNQ_PATH                  = 'pngnq'
-IMAGEMAGICK_CONVERT_PATH    = 'convert'
-IMAGEMAGICK_IDENTIFY_PATH   = 'identify'
-POTRACE_PATH                = 'potrace'
+# 外部程序的路径
+PNGQUANT_路径 = 'pngquant'
+PNGNQ_路径 = 'pngnq'
+IMAGEMAGICK_CONVERT_路径 = 'magick convert'
+IMAGEMAGICK_IDENTIFY_路径 = 'magick identify'
+POTRACE_路径 = 'potrace'
 
-POTRACE_DPI = 90.0 # potrace docs say it's 72, but this seems to work best
-COMMAND_LEN_NEAR_MAX = 1900 # a low approximate (but not maximum) limit for
-                            # very large command-line commands
-VERBOSITY_LEVEL = 0 # not just a constant, also affected by -v/--verbose option
+POTRACE_DPI = 90.0  # potrace docs 说它是 72, 但这个数值似乎效果最好
+命令行最长 = 1900  # 命令行长度限制
+日志级别 = 0  # 不止是一个常数，它也会爱 -v/--verbose 选项影响
 
-VERSION = '1.00'
+版本 = '1.01'
 
 import os, sys
 import shutil
@@ -49,37 +51,36 @@ import time
 from svg_stack import svg_stack
 
 
-def verbose(*args, level=1):
-    if VERBOSITY_LEVEL >= level:
+def 汇报(*args, level=1):
+    if 日志级别 >= level:
         print(*args)
 
 
-def process_command(command, stdinput=None, stdout_=False, stderr_=False):
-    """run command in invisible shell, return stdout and/or stderr as specified
+def 处理命令(命令, stdinput=None, stdout_=False, stderr_=False):
+    """在后台 shell 中运行命令，返回 stdout 和/或 stderr
 
-    Returns stdout, stderr, or a tuple (stdout, stderr) depending on which of
-    stdout_ and stderr_ is True. Raises an exception if the command encounters
-    an error.
+    返回 stdout, stderr 或一个数组（stdout, stderr），取决于 stdout, stderr 参数
+    是否为 True。如果遇到错误，则抛出。
 
-    command: command with arguments to send to command line
+    命令: 要运行的命令
     stdinput: data (bytes) to send to command's stdin, or None
     stdout_: True to receive command's stdout in the return value
     stderr_: True to receive command's stderr in the return value
 """
-    verbose(command)
-    stdin_pipe   = (subprocess.PIPE if stdinput  is not None else None)
-    stdout_pipe  = (subprocess.PIPE if stdout_ is True else None)
-    stderr_pipe  = subprocess.PIPE
+    汇报(命令)
+    stdin_pipe = (subprocess.PIPE if stdinput is not None else None)
+    stdout_pipe = (subprocess.PIPE if stdout_ is True else None)
+    stderr_pipe = subprocess.PIPE
 
-    #process = subprocess.Popen(command, stdin=stdin_pipe, stderr=stderr_pipe, stdout=stdout_pipe,
-        #shell=True, creationflags=subprocess.SW_HIDE)
-    process = subprocess.Popen(command, stdin=stdin_pipe, stderr=stderr_pipe, stdout=stdout_pipe,
-        shell=True)
+    # process = subprocess.Popen(command, stdin=stdin_pipe, stderr=stderr_pipe, stdout=stdout_pipe,
+    # shell=True, creationflags=subprocess.SW_HIDE)
+    进程 = subprocess.Popen(命令, stdin=stdin_pipe, stderr=stderr_pipe, stdout=stdout_pipe,
+                          shell=True)
 
-    stdoutput, stderror = process.communicate(stdinput)
-    #print(stderror)
-    returncode = process.wait()
-    if returncode != 0:
+    stdoutput, stderror = 进程.communicate(stdinput)
+    # print(stderror)
+    返回码 = 进程.wait()
+    if 返回码 != 0:
         Exception(stderror.decode())
     if stdout_ and not stderr_:
         return stdoutput
@@ -91,159 +92,163 @@ def process_command(command, stdinput=None, stdout_=False, stderr_=False):
         return None
 
 
-def rescale(src, destscale, scale, filter='lanczos'):
+def 重缩放(源, 目标, 缩放, 滤镜='lanczos'):
     """rescale src image to scale, save to destscale
 
     full list of filters is available from ImageMagick's documentation.
 """
-    if scale == 1.0: #just copy it over
-        shutil.copyfile(src, destscale)
+    if 缩放 == 1.0:  # just copy it over
+        shutil.copyfile(源, 目标)
     else:
-        command = '"{convert}" "{src}" -filter {filter} -resize {resize}% "{dest}"'.format(
-            convert=IMAGEMAGICK_CONVERT_PATH, src=src, filter=filter, resize=scale*100,
-            dest=destscale)
-        process_command(command)
+        命令 = '"{convert}" "{src}" -filter {filter} -resize {resize}% "{dest}"'.format(
+            convert=IMAGEMAGICK_CONVERT_路径, src=源, filter=滤镜, resize=缩放 * 100,
+            dest=目标)
+        处理命令(命令)
 
 
-def quantize(src, destquant, colors, algorithm='mc', dither=None):
+def 量化(源, 量化目标, 颜色数, 算法='mc', 拟色=None):
+    """将源图像量化到指定数量的颜色，保存到量化目标
 
-    """quantize src image to colors, save to destquant
+    量化：缩减颜色数量，只保留最主要的颜色
 
-    Uses chosen algorithm to quantize src image.
-    src: path of source image, must be png
-    destquant: path to save output quantized png image
-    colors: number of colors to quantize to, 0 for no quantization
-    algorithm: color quantization algorithm to use:
-        - 'mc' = median-cut (default, for few colors, uses pngquant)
-        - 'as' = adaptive spatial subdivision (uses imagemagick, may result in fewer colors)
-        - 'nq' = neuquant (for lots of colors, uses pngnq)
-    dither: dithering algorithm to use when quantizing.
-        None: the default, performs no dithering
-        'floydsteinberg': available with 'mc', 'as', and 'nq'
-        'riemersma': only available with 'as'
+    使用指定的算法来量化图像。
+    源：源图像的路径，必须是 png 文件
+    量化目标：输出图像的路径
+    颜色数：要缩减到的颜色数量，0 就是不量化
+    算法：
+        - 'mc' = median-cut 中切 (默认值, 只有少量颜色, 使用 pngquant)
+        - 'as' = adaptive spatial subdivision 自适应空间细分 (使用 imagemagick, 产生的颜色更少)
+        - 'nq' = neuquant (生成许多颜色, 使用 pngnq)
+    拟色: 量化时使用的抖动拟色算法
+        None: 默认，不拟色
+        'floydsteinberg': 当使用 'mc', 'as', 和 'nq' 时可用
+        'riemersma': 只有使用 'as' 时可用
     """
-    # build and execute shell command for quantizing an image file
+    # 创建和执行量化图像的命令
 
-    if colors == 0:
-        #skip quantization, just copy directly to destquant
-        shutil.copyfile(src, destquant)
+    if 颜色数 == 0:
+        # 跳过量化，直接复制输入到输出
+        shutil.copyfile(源, 量化目标)
 
-    elif algorithm == 'mc': #median-cut
-        if dither is None:
-            ditheropt = '-nofs '
-        elif dither == 'floydsteinberg':
-            ditheropt = ''
+    elif 算法 == 'mc':  # median-cut 中切
+        if 拟色 is None:
+            拟色选项 = '-nofs '
+        elif 拟色 == 'floydsteinberg':
+            拟色选项 = ''
         else:
-            raise ValueError("Invalid dither type '{0}' for 'mc' quantization".format(dither))
-        #using stdin/stdout to file since pngquant can't save to a custom output path
-        command = '"{pngquant}" {dither}-force {colors}'.format(
-            pngquant=PNGQUANT_PATH, dither=ditheropt, colors=colors)
-        with open(src, 'rb') as srcfile:
-            stdinput = srcfile.read()
-        stdoutput = process_command(command, stdinput=stdinput, stdout_=True)
-        with open(destquant, 'wb') as destfile:
-            destfile.write(stdoutput)
+            raise ValueError("对 'mc' 量化方法使用了错误的拟色类型：'{0}' ".format(拟色))
+        # 因为 pngquant 不能保存到中文路径，所以使用 stdin/stdout 操作 pngquant
+        命令 = '"{pngquant}" {dither}-force {colors}'.format(
+            pngquant=PNGQUANT_路径, dither=拟色选项, colors=颜色数)
+        with open(源, 'rb') as 源文件:
+            stdinput = 源文件.read()
+        stdoutput = 处理命令(命令, stdinput=stdinput, stdout_=True)
+        with open(量化目标, 'wb') as 目标文件:
+            目标文件.write(stdoutput)
 
-    elif algorithm == 'as': #adaptive spatial subdivision
-        if dither is None:
-            ditheropt = 'None'
-        elif dither in ('floydsteinberg', 'riemersma'):
-            ditheropt = dither
+    elif 算法 == 'as':  # adaptive spatial subdivision 自适应空间细分
+        if 拟色 is None:
+            拟色选项 = 'None'
+        elif 拟色 in ('floydsteinberg', 'riemersma'):
+            拟色选项 = 拟色
         else:
-            raise ValueError("Invalid dither type '{0}' for 'as' quantization".format(dither))
-        command = '"{convert}" "{src}" -dither {dither} -colors {colors} "{dest}"'.format(
-            convert=IMAGEMAGICK_CONVERT_PATH, src=src, dither=ditheropt, colors=colors, dest=destquant)
-        process_command(command)
+            raise ValueError("Invalid dither type '{0}' for 'as' quantization".format(拟色))
+        命令 = '"{convert}" "{src}" -dither {dither} -colors {colors} "{dest}"'.format(
+            convert=IMAGEMAGICK_CONVERT_路径, src=源, dither=拟色选项, colors=颜色数, dest=量化目标)
+        处理命令(命令)
 
-    elif algorithm == 'nq': #neuquant
+    elif 算法 == 'nq':  # neuquant
         ext = "~quant.png"
-        destdir = os.path.dirname(destquant)
-        if dither is None:
-            ditheropt = ''
-        elif dither == 'floydsteinberg':
-            ditheropt = '-Q f '
+        destdir = os.path.dirname(量化目标)
+        if 拟色 is None:
+            拟色选项 = ''
+        elif 拟色 == 'floydsteinberg':
+            拟色选项 = '-Q f '
         else:
-            raise ValueError("Invalid dither type '{0}' for 'nq' quantization".format(dither))
-        command = '"{pngnq}" -f {dither}-d "{destdir}" -n {colors} -e {ext} "{src}"'.format(
-            pngnq = PNGNQ_PATH, dither=ditheropt, destdir=destdir, colors=colors, ext=ext, src=src)
-        process_command(command)
-        #rename output file to destquant (because pngnq can't save to a custom path)
-        old_dest = os.path.join(destdir, os.path.splitext(os.path.basename(src))[0] + ext)
-        os.rename(old_dest, destquant)
+            raise ValueError("Invalid dither type '{0}' for 'nq' quantization".format(拟色))
+        命令 = '"{pngnq}" -f {dither}-d "{destdir}" -n {colors} -e {ext} "{src}"'.format(
+            pngnq=PNGNQ_路径, dither=拟色选项, destdir=destdir, colors=颜色数, ext=ext, src=源)
+        处理命令(命令)
+        # 因为 pngnq 不支持保存到自定义目录，所以先输出文件到当前目录，再移动到量化目标
+        旧输出 = os.path.join(destdir, os.path.splitext(os.path.basename(源))[0] + ext)
+        os.rename(旧输出, 量化目标)
     else:
-        #argparse should have caught this before it even reaches here
-        raise NotImplementedError('Unknown quantization algorithm "{0}"'.format(algorithm))
+        # 在错误到达这里前 argparse 应该已经先捕捉到了
+        raise NotImplementedError('未知的量化算法 "{0}"'.format(算法))
 
 
-def palette_remap(src, destremap, paletteimg, dither=None):
-    """remap src to paletteimage's colors, save to destremap
+def 调色板重映射(源, 重映射目标, 调色板图像, 拟色=None):
+    """用调色板图像的颜色重映射源图像，保存到重映射目标
 
-    src: path of source image
-    destremap: path to save output remapped image
-    paletteimg: path of an image; it contains the colors to which src will be remapped
-    dither: dithering algorithm to use when remapping.
-        Options are None, 'floydsteinberg', and 'riemersma'
+    源: 源图像路径
+    重映射目标: 输出保存路径
+    调色板图像: 一个图像路径，它包含了 src 将重映射的颜色
+    拟色: 重映射时的拟色算法
+        选项有：None, 'floydsteinberg', 和 'riemersma'
 """
 
-    if not os.path.exists(paletteimg): #because imagemagick doesn't check
-        raise IOError("Remapping palette image {0} not found".format(paletteimg))
+    if not os.path.exists(调色板图像):  # 因为 ImageMagick 不会检查
+        raise IOError("未找到重映射调色板：{0} ".format(调色板图像))
 
-    if dither is None:
-        ditheropt = 'None'
-    elif dither in ('floydsteinberg', 'riemersma'):
-        ditheropt = dither
+    if 拟色 is None:
+        拟色选项 = 'None'
+    elif 拟色 in ('floydsteinberg', 'riemersma'):
+        拟色选项 = 拟色
     else:
-        raise ValueError("Invalid dither type '{0}' for remapping".format(dither))
-    command = '"{convert}" "{src}" -dither {dither} -remap "{paletteimg}" "{dest}"'.format(
-        convert=IMAGEMAGICK_CONVERT_PATH, src=src, dither=ditheropt, paletteimg=paletteimg, dest=destremap)
-    process_command(command)
+        raise ValueError("不合理的重映射拟色类型：'{0}' ".format(拟色))
+    命令 = '"{convert}" "{src}" -dither {dither} -remap "{paletteimg}" "{dest}"'.format(
+        convert=IMAGEMAGICK_CONVERT_路径, src=源, dither=拟色选项, paletteimg=调色板图像, dest=重映射目标)
+    处理命令(命令)
 
 
-def make_palette(srcimage):
-    """get unique colors from srcimage, return #rrggbb hex color strings"""
+def 制作调色板(源图像):
+    """从源图像得到独特的颜色，返回 #rrggbb 16进制颜色"""
 
-    command = '"{convert}" "{srcimage}" -unique-colors -compress none ppm:-'.format(
-        convert = IMAGEMAGICK_CONVERT_PATH, srcimage=srcimage)
-    stdoutput = process_command(command, stdout_=True)
+    命令 = '"{convert}" "{srcimage}" -unique-colors -compress none ppm:-'.format(
+        convert=IMAGEMAGICK_CONVERT_路径, srcimage=源图像)
+    stdoutput = 处理命令(命令, stdout_=True)
 
     # separate stdout ppm image into its colors
-    ppm_lines = stdoutput.decode().splitlines()[3:]
-    del stdoutput #free up a little memory in advance
-    colorvals = tuple()
-    for line in ppm_lines:
-        colorvals += tuple(int(s) for s in line.split())
+    # 将 stdout ppm 图像分离到它的颜色
+    ppm_行 = stdoutput.decode().splitlines()[3:]
+    del stdoutput  # 提前释放一部分内存
+    颜色值 = tuple()
+    for 行 in ppm_行:
+        颜色值 += tuple(int(s) for s in 行.split())
 
-    #create i:j ranges that get every 3 values in colorvals
-    irange = range(0, len(colorvals), 3)
-    jrange = range(3, len(colorvals)+1, 3)
-    hex_colors = []
-    for i,j in zip(irange,jrange):
-        rgb = colorvals[i:j]
-        hex_colors.append("#{0:02x}{1:02x}{2:02x}".format(*rgb))
-    hex_colors.reverse() #so it will generally go from light bg to dark fg
-    return hex_colors
+    # create i:j ranges that get every 3 values in colorvals
+    # 建立在颜色值中得到每 3 个数值的 i:j 范围
+    i范围 = range(0, len(颜色值), 3)
+    j范围 = range(3, len(颜色值) + 1, 3)
+    十六进制颜色 = []
+    for i, j in zip(i范围, j范围):
+        rgb = 颜色值[i:j]
+        十六进制颜色.append("#{0:02x}{1:02x}{2:02x}".format(*rgb))
+    十六进制颜色.reverse()  # 生成由亮色背景到暗色背景
+    return 十六进制颜色
 
 
-def get_nonpalette_color(palette, start_black=True, additional=None):
+def 得到调色板外的颜色(调色板, 从黑色开始=True, 规避颜色=None):
     """return a color hex string not listed in palette
+    返回一个不在调色板内的16进制颜色字符串
 
-    start_black: start searching for colors starting at black, else white
-    additional: if specified, a list of additional colors to avoid returning
+    从黑色开始: 从黑色开始搜索颜色，否则从白色开始
+    规避颜色: 一个列表, 指定在搜索时需要规避的颜色
 """
-    if additional is None:
-        palette_ = tuple(palette)
+    if 规避颜色 is None:
+        最终调色板 = tuple(调色板)
     else:
-        palette_ = tuple(palette) + tuple(additional)
-    if start_black:
-        color_range = range(int('ffffff', 16))
+        最终调色板 = tuple(调色板) + tuple(规避颜色)
+    if 从黑色开始:
+        颜色范围 = range(int('ffffff', 16))
     else:
-        color_range = range(int('ffffff', 16), 0, -1)
-    for i in color_range:
-        color = "#{0:06x}".format(i)
-        if color not in palette_:
-            return color
-    #will fail in the case that palette+additional includes all colors #000000-#ffffff
-    raise Exception("All colors exhausted, could not find a nonpalette color")
+        颜色范围 = range(int('ffffff', 16), 0, -1)
+    for i in 颜色范围:
+        颜色 = "#{0:06x}".format(i)
+        if 颜色 not in 最终调色板:
+            return 颜色
+    # 当调色板加上规避颜色，包含所有颜色 #000000-#ffffff 时，抛出错误
+    raise Exception("未能找到调色板之外的颜色")
 
 
 # def isolate_color(src, destlayer, target_color, palette, stack=False):
@@ -290,115 +295,108 @@ def get_nonpalette_color(palette, start_black=True, additional=None):
 #     process_command(command, stdinput=stdinput)
 
 
-def isolate_color(src,target_tmp ,destlayer, target_color, palette, stack=False): #new version
-    """fills the specified color of src with black, all else is white
+def 孤立颜色(源, 目标临时文件, 目标图层, 目标颜色, 调色板, stack=False):  # new version
+    """将指定颜色区域替换为黑色，其他区域为白色
 
-    src: source image path, must match palette's colors
-    destlayer: path to save output image
-    target_color: the color to isolate (from palette)
-    palette: list of "#010101" etc. (output from make_palette)
-    stack: if True, colors before coloridx are white, colors after are black
+    源: 源图像路径，必须匹配调色板的颜色
+    目标图层: 输出图像的路径
+    目标颜色: 要孤立的颜色 (来自调色板)
+    调色板: 包含例如 "#010101" 的列表. (从制作调色板输出得到)
+    stack: 如果 True，在颜色索引之前的颜色为白，之后的为黑
 """
-    coloridx = palette.index(target_color)
+    颜色索引 = 调色板.index(目标颜色)
 
-    # to avoid problems when the palette contains black or white, background and
-    # foreground colors are chosen that are not in the palette (nor black or white)
-    bg_white = "#FFFFFF"
-    fg_black = "#000000"
-    bg_almost_white = get_nonpalette_color(palette, False, (bg_white, fg_black))
-    fg_almost_black = get_nonpalette_color(palette, True, (bg_almost_white, bg_white, fg_black))
+    # 为了避免调色板包含纯黑和纯白，背景和前景色都是非调色板的颜色（黑或白）
+    背景白 = "#FFFFFF"
+    前景黑 = "#000000"
+    背景接近白 = 得到调色板外的颜色(调色板, False, (背景白, 前景黑))
+    前景接近黑 = 得到调色板外的颜色(调色板, True, (背景接近白, 背景白, 前景黑))
 
-    # start off the piping of stdin/stdout
-    with open(src, 'rb') as srcfile:
-        stdinput = srcfile.read()
+    # 打开管道 stdin/stdout
+    with open(源, 'rb') as 源文件:
+        stdinput = 源文件.read()
 
-    # build a large combined command, execute it once it reaches sufficient length
-    # (because executing each fill command separately is very slow)
-    last_iteration = len(palette)-1 #new
-    # command_pre  = '"{convert}" - '.format(convert = IMAGEMAGICK_CONVERT_PATH)
-    # command_post = ' -'
-    # command_mid = ''
-    command_pre  = '"{convert}" "{src}" '.format(convert = IMAGEMAGICK_CONVERT_PATH,src=src)
-    command_post = ' "{target}"'.format(target=  target_tmp)
-    command_mid = ''
+    # 新建一个很长的命令，当它达到足够长度时就执行
+    # 因为分别执行填充命令非常的慢
+    last_iteration = len(调色板) - 1  # new
+    命令前缀 = '"{convert}" "{src}" '.format(convert=IMAGEMAGICK_CONVERT_路径, src=源)
+    命令后缀 = ' "{target}"'.format(target=目标临时文件)
+    命令中间 = ''
 
-    for i, col in enumerate(palette):
+    for i, 颜色 in enumerate(调色板):
         # fill this color with background or foreground?
-        if i == coloridx:
-            fill = fg_almost_black
-        elif i > coloridx and stack:
-            fill = fg_almost_black
+        if i == 颜色索引:
+            填充色 = 前景接近黑
+        elif i > 颜色索引 and stack:
+            填充色 = 前景接近黑
         else:
-            fill = bg_almost_white
+            填充色 = 背景接近白
 
+        命令中间 += ' -fill "{fill}" -opaque "{color}"'.format(fill=填充色, color=颜色)
+        if len(命令中间) >= 命令行最长 or (i == last_iteration and 命令中间):
+            命令 = 命令前缀 + 命令中间 + 命令后缀
 
-        command_mid += ' -fill "{fill}" -opaque "{color}"'.format(fill=fill, color=col)
-        if len(command_mid) >= COMMAND_LEN_NEAR_MAX or (i == last_iteration and command_mid):
-            command = command_pre + command_mid + command_post
-
-            stdoutput = process_command(command, stdinput=stdinput, stdout_=True)
+            stdoutput = 处理命令(命令, stdinput=stdinput, stdout_=True)
             stdinput = stdoutput
-            command_mid = '' #reset
+            命令中间 = ''  # reset
 
-    # now color the foreground black and background white
-    command = '"{convert}" "{src}" -fill "{fillbg}" -opaque "{colorbg}" -fill "{fillfg}" -opaque "{colorfg}" "{dest}"'.format(
-        convert = IMAGEMAGICK_CONVERT_PATH,src=target_tmp, fillbg=bg_white, colorbg=bg_almost_white,
-        fillfg=fg_black, colorfg=fg_almost_black, dest=destlayer)
-    process_command(command, stdinput=stdinput)
-
-
-def fill_with_color(src, dest):
-    command = '"{convert}" "{src}" -fill "{color}" +opaque none "{dest}"'.format(
-        convert = IMAGEMAGICK_CONVERT_PATH, src=src, color="#000000", dest=dest)
-    process_command(command)
-
-def get_width(src):
-    """return width of src image in pixels"""
-    command = '"{identify}" -ping -format "%w" "{src}"'.format(
-        identify=IMAGEMAGICK_IDENTIFY_PATH, src=src)
-    stdoutput = process_command(command, stdout_=True)
-    width = int(stdoutput)
-    return width
+    # 现在将前景变黑，背景变白
+    命令 = '"{convert}" "{src}" -fill "{fillbg}" -opaque "{colorbg}" -fill "{fillfg}" -opaque "{colorfg}" "{dest}"'.format(
+        convert=IMAGEMAGICK_CONVERT_路径, src=目标临时文件, fillbg=背景白, colorbg=背景接近白,
+        fillfg=前景黑, colorfg=前景接近黑, dest=目标图层)
+    处理命令(命令, stdinput=stdinput)
 
 
-def trace(src, desttrace, outcolor, despeckle=2, smoothcorners=1.0, optimizepaths=0.2, width=None):
-    """runs potrace with specified color and options
+def 使用颜色填充(源, 目标):
+    命令 = '"{convert}" "{src}" -fill "{color}" +opaque none "{dest}"'.format(
+        convert=IMAGEMAGICK_CONVERT_路径, src=源, color="#000000", dest=目标)
+    处理命令(命令)
 
-    src: source image to trace
-    desttrace: destination to which output svg is saved
-    outcolor: fill color of traced path
-    despeckle: supress speckles of this many pixels
-        (same as potrace --turdsize)
-    smoothcorners: corner smoothing: 0 for no smoothing, 1.334 for max
-        (same as potrace --alphamax)
-    optimizepaths: Bezier curve optimization: 0 for least, 5 for most
-        (same as potrace --opttolerance)
-    width: width of output svg in pixels, None for default. Keeps aspect ratio.
+
+def 得到宽度(源):
+    """返回头像宽多少像素"""
+    命令 = '"{identify}" -ping -format "%w" "{src}"'.format(
+        identify=IMAGEMAGICK_IDENTIFY_路径, src=源)
+    stdoutput = 处理命令(命令, stdout_=True)
+    宽 = int(stdoutput)
+    return 宽
+
+
+def 描摹(源, 描摹目标, 输出颜色, 抑制斑点像素数=2, 平滑转角=1.0, 优化路径=0.2, 宽度=None):
+    """在指定的颜色、选项下，运行 potrace
+
+    源: 源文件
+    描摹目标: 输出目标文件
+    输出颜色: 描摹路径填充的颜色
+    抑制斑点像素数: 抑制指定像素数量的斑点
+        (等同于 potrace --turdsize)
+    平滑转角: 平滑转角: 0 表示不平滑, 1.334 为最大
+        (等同于 potrace --alphamax)
+    优化路径: 贝塞尔曲线优化: 0 最小, 5 最大
+        (等同于 potrace --opttolerance)
+    宽度: 输出的 svg 像素宽度, 默认 None. 保持原始比例.
 """
 
+    if 宽度 is not None:
+        宽度 = 宽度 / POTRACE_DPI
+    命令 = ('"{potrace}" --svg -o "{dest}" -C "{outcolor}" -t {despeckle} '
+          '-a {smoothcorners} -O {optimizepaths} {W}{width} "{src}"').format(
+        potrace=POTRACE_路径, dest=描摹目标, outcolor=输出颜色,
+        despeckle=抑制斑点像素数, smoothcorners=平滑转角, optimizepaths=优化路径,
+        W=('-W ' if 宽度 is not None else ''), width=(宽度 if 宽度 is not None else ''),
+        src=源)
 
-    if width is not None:
-        width = width/POTRACE_DPI
-    command = ('"{potrace}" --svg -o "{dest}" -C "{outcolor}" -t {despeckle} '
-        '-a {smoothcorners} -O {optimizepaths} {W}{width} "{src}"').format(
-        potrace = POTRACE_PATH, dest=desttrace, outcolor=outcolor,
-        despeckle=despeckle, smoothcorners=smoothcorners, optimizepaths=optimizepaths,
-        W=('-W ' if width is not None else ''), width=(width if width is not None else ''),
-        src=src)
+    处理命令(命令)
 
 
-    process_command(command)
+def 检查范围(min, max, typefunc, typename, strval):
+    """对 argparse 的参数，检查参数是否符合范围
 
-def check_range(min, max, typefunc, typename, strval):
-    """for argparse type functions, checks the range of a value
-
-    min: minimum acceptable value, also appears in error messages
-    max: maximum acceptable value (or None for no maximum), also appears in
-        error messages
-    typefunc: function to convert strval to the desired value, e.g. float, int
-    typename: name of the converted data type, e.g. "an integer", appears in
-        error messages
-    strval: string containing the desired value
+    min: 可接受的最小值
+    max: 可接受的最大值
+    typefunc: 值转换函数, e.g. float, int
+    typename: 值的类型, e.g. "an integer"
+    strval: 包含期待值的字符串
 """
     try:
         val = typefunc(strval)
@@ -414,14 +412,14 @@ def check_range(min, max, typefunc, typename, strval):
     return val
 
 
-def get_args(cmdargs=None):
+def 获得参数(cmdargs=None):
     """return parser and namespace of parsed command-line arguments
 
     cmdargs: if specified, a list of command-line arguments to use instead of
         those provided to this script (i.e. a string that has been shlex.split)
 """
     parser = argparse.ArgumentParser(description="trace a color image with "
-        "potrace, output color SVG file", add_help=False, prefix_chars='-/')
+                                                 "potrace, output color SVG file", add_help=False, prefix_chars='-/')
     # help also accessible via /?
     parser.add_argument(
         '-h', '--help', '/?',
@@ -429,86 +427,86 @@ def get_args(cmdargs=None):
         help="show this help message and exit")
     # file io arguments
     parser.add_argument('-i',
-        '--input', metavar='src', nargs='+', required=True,
-        help="path of input image(s) to trace, supports * and ? wildcards")
+                        '--input', metavar='src', nargs='+', required=True,
+                        help="path of input image(s) to trace, supports * and ? wildcards")
     parser.add_argument('-o',
-        '--output', metavar='dest',
-        help="path of output image to save to, supports * wildcard")
+                        '--output', metavar='dest',
+                        help="path of output image to save to, supports * wildcard")
     parser.add_argument('-d',
-        '--directory', metavar='destdir',
-        help="outputs to destdir")
+                        '--directory', metavar='destdir',
+                        help="outputs to destdir")
     # processing arguments
     parser.add_argument('-C',
-        '--cores', metavar='N',
-        type=functools.partial(check_range, 0, None, int, "an integer"),
-        help="number of cores to use for image processing. "
-             "Ignored if processing a single file with 1 color "
-             "(default tries to use all cores)")
+                        '--cores', metavar='N',
+                        type=functools.partial(检查范围, 0, None, int, "an integer"),
+                        help="number of cores to use for image processing. "
+                             "Ignored if processing a single file with 1 color "
+                             "(default tries to use all cores)")
     # color trace options
-    #make colors & palette mutually exclusive
+    # make colors & palette mutually exclusive
     color_palette_group = parser.add_mutually_exclusive_group(required=True)
     color_palette_group.add_argument('-c',
-        '--colors', metavar='N',
-        type=functools.partial(check_range, 0, 256, int, "an integer"),
-        help="[required unless -p is used instead] "
-             "number of colors to reduce each image to before tracing, up to 256. "
-             "Value of 0 skips color reduction (not recommended unless images "
-             "are already color-reduced)")
+                                     '--colors', metavar='N',
+                                     type=functools.partial(检查范围, 0, 256, int, "an integer"),
+                                     help="[required unless -p is used instead] "
+                                          "number of colors to reduce each image to before tracing, up to 256. "
+                                          "Value of 0 skips color reduction (not recommended unless images "
+                                          "are already color-reduced)")
     parser.add_argument('-q',
-        '--quantization', metavar='algorithm',
-        choices=('mc','as','nq'), default='mc',
-        help="color quantization algorithm: mc, as, or nq. "
-            "'mc' (Median-Cut, default); "
-            "'as' (Adaptive Spatial Subdivision, may result in fewer colors); "
-            "'nq' (NeuQuant, for hundreds of colors). Disabled if --colors 0")
-    #make --floydsteinberg and --riemersma dithering mutually exclusive
+                        '--quantization', metavar='algorithm',
+                        choices=('mc', 'as', 'nq'), default='mc',
+                        help="color quantization algorithm: mc, as, or nq. "
+                             "'mc' (Median-Cut, default); "
+                             "'as' (Adaptive Spatial Subdivision, may result in fewer colors); "
+                             "'nq' (NeuQuant, for hundreds of colors). Disabled if --colors 0")
+    # make --floydsteinberg and --riemersma dithering mutually exclusive
     dither_group = parser.add_mutually_exclusive_group()
     dither_group.add_argument('-fs',
-        '--floydsteinberg', action='store_true',
-        help="enable Floyd-Steinberg dithering (for any quantization or -p/--palette)."
-            " Warning: any dithering will greatly increase output svg's size and complexity.")
+                              '--floydsteinberg', action='store_true',
+                              help="enable Floyd-Steinberg dithering (for any quantization or -p/--palette)."
+                                   " Warning: any dithering will greatly increase output svg's size and complexity.")
     dither_group.add_argument('-ri',
-        '--riemersma', action='store_true',
-        help="enable Rimersa dithering (only for Adaptive Spatial Subdivision quantization or -p/--palette)")
+                              '--riemersma', action='store_true',
+                              help="enable Rimersa dithering (only for Adaptive Spatial Subdivision quantization or -p/--palette)")
     color_palette_group.add_argument('-r',
-        '--remap', metavar='paletteimg',
-        help=("use a custom palette image for color reduction [overrides -c "
-              "and -q]"))
+                                     '--remap', metavar='paletteimg',
+                                     help=("use a custom palette image for color reduction [overrides -c "
+                                           "and -q]"))
     # image options
     parser.add_argument('-s',
-        '--stack',
-        action='store_true',
-        help="stack color traces (recommended for more accurate output)")
+                        '--stack',
+                        action='store_true',
+                        help="stack color traces (recommended for more accurate output)")
     parser.add_argument('-p',
-        '--prescale', metavar='size',
-        type=functools.partial(check_range, 0, None, float, "a floating-point number"), default=2,
-        help="scale image this much before tracing for greater detail (default: 2). "
-            "The image's output size is not changed. (2 is recommended, or 3 for smaller "
-            "details.)")
+                        '--prescale', metavar='size',
+                        type=functools.partial(检查范围, 0, None, float, "a floating-point number"), default=2,
+                        help="scale image this much before tracing for greater detail (default: 2). "
+                             "The image's output size is not changed. (2 is recommended, or 3 for smaller "
+                             "details.)")
     # potrace options
     parser.add_argument('-D',
-        '--despeckle', metavar='size',
-        type=functools.partial(check_range, 0, None, int, "an integer"), default=2,
-        help='supress speckles of this many pixels (default: 2)')
+                        '--despeckle', metavar='size',
+                        type=functools.partial(检查范围, 0, None, int, "an integer"), default=2,
+                        help='supress speckles of this many pixels (default: 2)')
     parser.add_argument('-S',
-        '--smoothcorners', metavar='threshold',
-        type=functools.partial(check_range, 0, 1.334, float, "a floating-point number"), default=1.0,
-        help="set corner smoothing: 0 for no smoothing, 1.334 for max "
-            "(default: 1.0)")
+                        '--smoothcorners', metavar='threshold',
+                        type=functools.partial(检查范围, 0, 1.334, float, "a floating-point number"), default=1.0,
+                        help="set corner smoothing: 0 for no smoothing, 1.334 for max "
+                             "(default: 1.0)")
     parser.add_argument('-O',
-        '--optimizepaths', metavar='tolerance',
-        type=functools.partial(check_range, 0, 5, float, "a floating-point number"), default=0.2,
-        help="set Bezier curve optimization: 0 for least, 5 for most "
-              "(default: 0.2)")
+                        '--optimizepaths', metavar='tolerance',
+                        type=functools.partial(检查范围, 0, 5, float, "a floating-point number"), default=0.2,
+                        help="set Bezier curve optimization: 0 for least, 5 for most "
+                             "(default: 0.2)")
     parser.add_argument('-bg',
-        '--background', action='store_true',
-        help=("set first color as background and posibly optimize final svg"))
+                        '--background', action='store_true',
+                        help=("set first color as background and posibly optimize final svg"))
     # other options
     parser.add_argument('-v',
-        '--verbose', action='store_true',
-        help="print details about commands executed by this script")
+                        '--verbose', action='store_true',
+                        help="print details about commands executed by this script")
     parser.add_argument('--version', action='version',
-        version='%(prog)s {ver}'.format(ver=VERSION))
+                        version='%(prog)s {ver}'.format(ver=版本))
 
     if cmdargs is None:
         args = parser.parse_args()
@@ -517,7 +515,7 @@ def get_args(cmdargs=None):
 
     # with multiple inputs, --output must use at least one * wildcard
     multi_inputs = False
-    for i, input_ in enumerate(get_inputs_outputs(args.input)):
+    for i, input_ in enumerate(得到输入输出(args.input)):
         if i:
             multi_inputs = True
             break
@@ -532,8 +530,8 @@ def get_args(cmdargs=None):
     return args
 
 
-def escape_brackets(string):
-    '''replace [ with [[], ] with []] (i.e. escapes [ and ] for globbing)'''
+def 转义括号(string):
+    '''使用 [[] 换替 [，使用 []] 换替 ]  (i.e. escapes [ and ] for globbing)'''
     letters = list(string)
     for i, letter in enumerate(letters[:]):
         if letter == '[':
@@ -543,8 +541,8 @@ def escape_brackets(string):
     return ''.join(letters)
 
 
-def get_inputs_outputs(arg_inputs, output_pattern="{0}.svg", ignore_duplicates=True):
-    """returns an iterator of (input, matching output) with *? shell expansion
+def 得到输入输出(arg_inputs, output_pattern="{0}.svg", ignore_duplicates=True):
+    """使用 *? shell 通配符展开，得到 (input, matching output) 的遍历器
 
     arg_inputs: command-line-given inputs, can include *? wildcards
     output_pattern: pattern to rename output file, with {0} for input's base
@@ -555,14 +553,14 @@ def get_inputs_outputs(arg_inputs, output_pattern="{0}.svg", ignore_duplicates=T
     old_inputs = set()
     for arg_input in arg_inputs:
         if '*' in arg_input or '?' in arg_input:
-        #preventing [] expansion here because glob has problems with legal [] filenames
-        #([] expansion still works in a Unix shell, it happens before Python even executes)
+            # preventing [] expansion here because glob has problems with legal [] filenames
+            # ([] expansion still works in a Unix shell, it happens before Python even executes)
             if '[' in arg_input or ']' in arg_input:
-                arg_input = escape_brackets(arg_input)
+                arg_input = 转义括号(arg_input)
             inputs_ = tuple(iglob(os.path.abspath(arg_input)))
         else:
-        #ensures non-existing file paths are included so they are reported as such
-        #(glob silently skips over non-existing files, but we want to know about them)
+            # ensures non-existing file paths are included so they are reported as such
+            # (glob silently skips over non-existing files, but we want to know about them)
             inputs_ = (arg_input,)
         for input_ in inputs_:
             if ignore_duplicates:
@@ -577,346 +575,340 @@ def get_inputs_outputs(arg_inputs, output_pattern="{0}.svg", ignore_duplicates=T
                 yield input_, output
 
 
-def q1_job(q2, total, layers, settings, findex, input, output):
-    """ Initializes files, rescales, and performs color reduction
+def 队列1_任务(队列2, 总数, 图层, 设置, 输入索引, 输入, 输出):
+    """ 初始化文件、重新缩放、缩减颜色
 
-    q2: the second job queue (isolation + tracing)
-    total: a value to measure the total number of q2 tasks
-    layers: an ordered list of traced layers as SVGFiles
-    settings: a dictionary that must contain the following keys:
+    队列2: 第二个任务列表 (颜色孤立 + 临摹)
+    总数: 用于测量队列二任务总数的值
+    图层: 一个已经排序的列表，包含了 svg 格式的临摹图层文件
+    设置: 一个字典，包含以下的键：
         colors, quantization, dither, remap, prescale, tmp
         See color_trace_multi for details of the values
-    findex: an integer index for input file
-    input: the input path, source png file
-    output: the output path, dest svg file
+    输入索引: 输入文件的整数索引 findex
+    输入: 输入 png 文件
+    输出: 输出 svg 路径
 """
-    # create destination directory if it doesn't exist
-    destdir = os.path.dirname(os.path.abspath(output))
+    # 如果输出目录不存在，则创建
+    目标文件夹 = os.path.dirname(os.path.abspath(输出))
+    if not os.path.exists(目标文件夹):
+        os.makedirs(目标文件夹)
 
-    if not os.path.exists(destdir):
-        os.makedirs(destdir)
-
-
-    # temporary files will reside next to the respective output file
-    this_scaled = os.path.abspath(os.path.join(settings['tmp'], '{0}~scaled.png'.format(findex)))
-    this_reduced = os.path.abspath(os.path.join(settings['tmp'], '{0}~reduced.png'.format(findex)))
+    # 临时文件会放置在各个输出文件的旁边
+    缩放文件 = os.path.abspath(os.path.join(设置['tmp'], '{0}~scaled.png'.format(输入索引)))
+    减色文件 = os.path.abspath(os.path.join(设置['tmp'], '{0}~reduced.png'.format(输入索引)))
 
     try:
-        # when quantization is skipped, must use a scaling method that
-        # doesn't increase the number of colors
-        if settings['colors'] == 0:
-            filter_ = 'point'
+        # 如果跳过了量化，则必须使用不会增加颜色数量的缩放方法
+        if 设置['colors'] == 0:
+            滤镜 = 'point'
         else:
-            filter_ = 'lanczos'
-        rescale(input, this_scaled, settings['prescale'], filter=filter_)
+            滤镜 = 'lanczos'
+        重缩放(输入, 缩放文件, 设置['prescale'], 滤镜=滤镜)
 
-
-        if settings['colors'] is not None:
-            quantize(this_scaled, this_reduced, settings['colors'], algorithm=settings['quantization'], dither=settings['dither'])
-        elif settings['remap'] is not None:
-            palette_remap(this_scaled, this_reduced, settings['remap'], dither=settings['dither'])
+        if 设置['colors'] is not None:
+            量化(缩放文件, 减色文件, 设置['colors'], 算法=设置['quantization'], 拟色=设置['dither'])
+        elif 设置['remap'] is not None:
+            调色板重映射(缩放文件, 减色文件, 设置['remap'], 拟色=设置['dither'])
         else:
-            #argparse should have caught this
-            raise Exception("One of the arguments 'colors' or 'remap' must be specified")
-        palette = make_palette(this_reduced)
+            # argparse 应该已经抛出这个错误
+            raise Exception("至少应该设置 'colors' 、 'remap' 中最少一个参数")
+        调色板 = 制作调色板(减色文件)
 
-        # update total based on the number of colors in palette
-        if settings['colors'] is not None:
-            total.value -= settings['colors'] - len(palette)
+        # 基于调色板中颜色的数量更新总数
+        if 设置['colors'] is not None:
+            总数.value -= 设置['colors'] - len(调色板)
         else:
-            total.value -= settings['palettesize'] - len(palette)
-        # initialize layers for the file at findex
-        layers[findex] += [False] * len(palette)
+            总数.value -= 设置['palettesize'] - len(调色板)
+        # 初始化输入索引所指文件的图层
+        图层[输入索引] += [False] * len(调色板)
 
-        # get input image width
-        width = get_width(input)
+        # 得到图像宽度
+        宽度 = 得到宽度(输入)
 
-        # add jobs to the second job queue
-        for i, color in enumerate(palette):
-            q2.put({ 'width': width, 'color': color, 'palette': palette, 'reduced': this_reduced, 'output': output, 'findex': findex, 'cindex': i })
+        # 添加任务到第二个任务队列
+        for i, 颜色 in enumerate(调色板):
+            队列2.put(
+                {'width': 宽度, 'color': 颜色, 'palette': 调色板, 'reduced': 减色文件, 'output': 输出, 'findex': 输入索引, 'cindex': i})
 
     except (Exception, KeyboardInterrupt) as e:
-        # delete temporary files on exception...
-        remfiles(this_scaled, this_reduced)
+        # 发生错误时删除临时文件
+        删除文件(缩放文件, 减色文件)
         raise e
     else:
-        #...or after tracing
-        remfiles(this_scaled)
+        # 描摹后删除文件
+        删除文件(缩放文件)
 
 
-def q2_job(layers, layers_lock, settings, width, color, palette, findex, cindex, reduced, output):
-    """ Isolates a color and traces it
+def 队列2_任务(图层, 图层锁, 设置, 宽度, 颜色, 调色板, 文件索引, 颜色索引, 已缩减图像, 输出路径):
+    """ 分离颜色并描摹
 
-    layers: an ordered list of traced layers as SVGFiles
-    layers_lock: a lock that must be acquired for reading and writing the layers object
-    settings: a dictionary that must contain the following keys:
+    图层: 一个有序列表，包含了 svg 文件的临摹图层
+    图层锁: 读取和写入图层对象时必须获取的锁
+    设置: 一个字典，必须有以下键值:
         stack, despeckle, smoothcorners, optimizepaths, tmp
         See color_trace_multi for details of the values
-    width: the width of the input image
-    color: the color to isolate
-    findex: an integer index for input file
-    cindex: an integer index for color
-    reduced: the color-reduced input image
-    output: the output path, dest svg file
+    宽度: 输入图像的宽度
+    颜色: 要孤立的颜色
+    文件索引: 输入文件的整数索引
+    颜色索引: 颜色的整数索引
+    已缩减图像: 已经缩减颜色的输入图像
+    输出路径: 输出路径，svg 文件
 """
-    # temporary files will reside next to the respective output file
-    this_isolated = os.path.abspath(os.path.join(settings['tmp'], '{0}-{1}~isolated.png'.format(findex, cindex)))
-    this_layer = os.path.abspath(os.path.join(settings['tmp'], '{0}-{1}~layer.ppm'.format(findex, cindex)))
-    trace_format = '{0}-{1}~trace.svg'
-    this_trace = os.path.abspath(os.path.join(settings['tmp'], trace_format.format(findex, cindex)))
+    # 临时文件放在每个输出文件的旁边
+    该文件孤立颜色图像 = os.path.abspath(os.path.join(设置['tmp'], '{0}-{1}~isolated.png'.format(文件索引, 颜色索引)))
+    该文件图层 = os.path.abspath(os.path.join(设置['tmp'], '{0}-{1}~layer.ppm'.format(文件索引, 颜色索引)))
+    描摹格式 = '{0}-{1}~trace.svg'
+    描摹文件 = os.path.abspath(os.path.join(设置['tmp'], 描摹格式.format(文件索引, 颜色索引)))
 
     try:
-        # if color index is 0 and -bg flag is activated
-        # simply fill image with matching color else isolate color
-        if cindex == 0 and settings['background']:
-            verbose("Index {}".format(color))
-            fill_with_color(reduced, this_layer)
+        # 如果颜色索引是 0 并且 -bg 选项被激活
+        # 直接用匹配的颜色填充图像，否则使用孤立颜色
+        if 颜色索引 == 0 and 设置['background']:
+            汇报("Index {}".format(颜色))
+            使用颜色填充(已缩减图像, 该文件图层)
         else:
-            isolate_color(reduced, this_isolated, this_layer, color, palette, stack=settings['stack'])
-        # trace for this color, add to svg stack
-        trace(this_layer, this_trace, color, settings['despeckle'], settings['smoothcorners'], settings['optimizepaths'], width)
+            孤立颜色(已缩减图像, 该文件孤立颜色图像, 该文件图层, 颜色, 调色板, stack=设置['stack'])
+        # 描摹这个颜色，添加到 svg 栈
+        描摹(该文件图层, 描摹文件, 颜色, 设置['despeckle'], 设置['smoothcorners'], 设置['optimizepaths'], 宽度)
     except (Exception, KeyboardInterrupt) as e:
-        # delete temporary files on exception...
-        remfiles(reduced, this_isolated, this_layer, this_trace)
+        # 若出错，则先删掉临时文件
+        删除文件(已缩减图像, 该文件孤立颜色图像, 该文件图层, 描摹文件)
         raise e
     else:
-        #...or after tracing
-        remfiles(this_isolated, this_layer)
+        # 完成任务后删除临时文件
+        删除文件(该文件孤立颜色图像, 该文件图层)
 
-    layers_lock.acquire()
+    图层锁.acquire()
     try:
-        # add layer
-        layers[findex][cindex] = True
+        # 添加图层
+        图层[文件索引][颜色索引] = True
 
-        # check if all layers of this file have been traced
-        is_last = False not in layers[findex]
+        # 检查这个文件所有的图层是否都被临摹了
+        是最后一个 = False not in 图层[文件索引]
     finally:
-        layers_lock.release()
+        图层锁.release()
 
-    # save the svg document if it is ready
-    if is_last:
-        # start the svg stack
-        layout = svg_stack.CBoxLayout()
+    # 如果已经就绪，则保存 svg 文档
+    if 是最后一个:
+        # 开始 svg 堆栈
+        布局 = svg_stack.CBoxLayout()
 
-        layer_traces = [os.path.abspath(os.path.join(settings['tmp'], trace_format.format(findex, l))) for l in range(len(layers[findex]))]
+        临摹图层 = [os.path.abspath(os.path.join(设置['tmp'], 描摹格式.format(文件索引, l))) for l in range(len(图层[文件索引]))]
 
-        # add layers to svg
-        for t in layer_traces:
-            layout.addSVG(t)
+        # 添加图层到 svg
+        for t in 临摹图层:
+            布局.addSVG(t)
 
-        # save stacked output svg
-        doc = svg_stack.Document()
-        doc.setLayout(layout)
-        with open(output, 'w') as file:
-            doc.save(file)
+        # 保存堆栈好的 svg 输出
+        文档 = svg_stack.Document()
+        文档.setLayout(布局)
+        with open(输出路径, 'w') as 文件:
+            文档.save(文件)
 
-        remfiles(reduced, *layer_traces)
+        删除文件(已缩减图像, *临摹图层)
 
 
-def process_worker(q1, q2, progress, total, layers, layers_lock, settings):
-    """ Function for handling process jobs
+def 进程处理(第一个任务队列, 第二个任务队列, 已完成任务数, 任务总数, 图层, 图层锁, 设置):
+    """ 处理 process 任务的函数
 
-    q1: the first job queue (scaling + color reduction)
-    q2: the second job queue (isolation + tracing)
-    progress: a value to measure the number of completed q2 tasks
-    total: a value to measure the total number of q2 tasks
-    layers: a nested list. layers[file_index][color_index] is a boolean that
-        indicates if the layer for the file at file_index with the color
-        at color_index has been traced
-    layers_lock: a lock that must be acquired for reading and writing the layers object in q2 jobs
-    settings: a dictionary that must contain the following keys:
+    q1: 第一个任务队列 (缩放 + 颜色缩减)
+    q2: 第二个任务队列 (颜色隔离 + 描摹)
+    progress: 第二个队列已完成任务数
+    total: 第二个队列总任务数
+    layers: 一个嵌套列表， layers[file_index][color_index] 是一个布尔值，
+            表示 file_index 所指文件的 color_index 所指颜色的图层是否已经被描摹
+    layers_lock: 读取和写入第二个任务队列中图层对象时的锁
+    settings: 一个字典，必须包含下述键值:
         quantization, dither, remap, stack, prescale, despeckle, smoothcorners,
         optimizepaths, colors, tmp
         See color_trace_multi for details of the values
 """
     while True:
-        # try and get a job from q2 before q1 to reduce the total number of
-        # temporary files and memory
-        while not q2.empty():
+        # 在第一个任务队列之前，从第二个人队列取一个工作，以节省临时文件和内存
+        while not 第二个任务队列.empty():
             try:
-                job_args = q2.get(block=False)
-                q2_job(layers, layers_lock, settings, **job_args)
-                q2.task_done()
-                progress.value += 1
+                工作参数 = 第二个任务队列.get(block=False)
+                队列2_任务(图层, 图层锁, 设置, **工作参数)
+                第二个任务队列.task_done()
+                已完成任务数.value += 1
             except queue.Empty:
                 break
 
-        # get a job from q1 since q2 is empty
+        # 自第二个任务队列为空后，从第一个任务队列获取工作
         try:
-            job_args = q1.get(block=False)
+            工作参数 = 第一个任务队列.get(block=False)
 
-            q1_job(q2, total, layers, settings, **job_args)
-            q1.task_done()
+            队列1_任务(第二个任务队列, 任务总数, 图层, 设置, **工作参数)
+            第一个任务队列.task_done()
         except queue.Empty:
             time.sleep(.01)
-        
-        if q2.empty() and q1.empty():
+
+        if 第二个任务队列.empty() and 第一个任务队列.empty():
             break
 
-def color_trace_multi(inputs, outputs, colors, processcount, quantization='mc', dither=None,
-    remap=None, stack=False, prescale=2, despeckle=2, smoothcorners=1.0, optimizepaths=0.2, background=False):
-    """color trace input images with specified options
 
-    inputs: list of input paths, source png files
-    outputs: list of output paths, dest svg files
-    colors: number of colors to quantize to, 0 for no quantization
-    processcount: number of process to launch for image processing
-    quantization: color quantization algorithm to use:
-        - 'mc' = median-cut (default, for few colors, uses pngquant)
-        - 'as' = adaptive spatial subdivision (uses imagemagick, may result in fewer colors)
-        - 'nq' = neuquant (for lots of colors, uses pngnq)
-    dither: dithering algorithm to use. (Remember, final output is affected by despeckle.)
-        None: the default, performs no dithering
-        'floydsteinberg': available with 'mc', 'as', and 'nq'
-        'riemersma': only available with 'as'
-    palette: source of custom palette image for color reduction (overrides
-        colors and quantization)
-    stack: whether to stack color traces (recommended for more accurate output)
-    despeckle: supress speckles of this many pixels
-    smoothcorners: corner smoothing: 0 for no smoothing, 1.334 for max
-    optimizepaths: Bezier curve optimization: 0 for least, 5 for most
-    background: Set first color as background across whole image reducing svg size
+def 彩色描摹(输入列表, 输出列表, 颜色数, 进程数, quantization='mc', 拟色=None,
+         remap=None, stack=False, prescale=2, despeckle=2, smoothcorners=1.0, optimizepaths=0.2, background=False):
+    """用指定选项彩色描摹输入图片
+
+    输入列表: 输入文件列表，源 png 文件
+    输出列表: 输出文件列表，目标 svg 文件
+    颜色数: 要亮化缩减到的颜色质量，0 表示不量化
+    进程数: 图像处理进程数
+    量化算法: 要使用的量化算法:
+        - 'mc' = median-cut 中切 (默认值, 只有少量颜色, 使用 pngquant)
+        - 'as' = adaptive spatial subdivision 自适应空间细分 (使用 imagemagick, 产生的颜色更少)
+        - 'nq' = neuquant (生成许多颜色, 使用 pngnq)
+    拟色: 量化时使用的抖动拟色算法 (提醒，最后的输出结果受 despeckle 影响)
+        None: 默认，不拟色
+        'floydsteinberg': 当使用 'mc', 'as', 和 'nq' 时可用
+        'riemersma': 只有使用 'as' 时可用
+    调色板：用于颜色缩减的自定义调色板图像的源（覆盖颜色数和量化）
+    堆栈: 是否堆栈彩色描摹 (可以得到更精确的输出)
+    抑制斑点像素数: 抑制指定像素数量的斑点
+    平滑转角: 平滑转角: 0 表示不平滑, 1.334 为最大
+        (等同于 potrace --alphamax)
+    优化路径: 贝塞尔曲线优化: 0 最小, 5 最大
+        (等同于 potrace --opttolerance)
+    背景：设置第一个颜色为整个 svg 背景，以减小 svg 体积
 """
-    tmp = tempfile.mkdtemp()
+    临时文件 = tempfile.mkdtemp()
 
-    # create a two job queues
-    # q1 = scaling + color reduction
-    q1 = multiprocessing.JoinableQueue()
-    # q2 = isolation + tracing
-    q2 = multiprocessing.JoinableQueue()
+    # 新建两个任务队列
+    # 第一个任务队列 = 缩放和颜色缩减
+    第一个任务队列 = multiprocessing.JoinableQueue()
+    # 第二个任务队列 = 颜色分离和描摹
+    第二个任务队列 = multiprocessing.JoinableQueue()
 
-    # create a manager to share the layers between processes
-    manager = multiprocessing.Manager()
-    layers = []
-    for i in range(min(len(inputs), len(outputs))):
-        layers.append(manager.list())
-    # and make a lock for reading and modifying layers
-    layers_lock = multiprocessing.Lock()
+    # 创建一个管理器，在两个进程时间共享图层
+    管理器 = multiprocessing.Manager()
+    图层 = []
+    for i in range(min(len(输入列表), len(输出列表))):
+        图层.append(管理器.list())
+    # 创建一个读取和修改图层的锁
+    图层锁 = multiprocessing.Lock()
 
-    # create a shared memory counter of completed and total tasks for measuring progress
-    progress = multiprocessing.Value('i', 0)
-    if colors is not None:
-        # this is only an estimate because quantization can result in less colors
-        # than in the "colors" variable. This value is corrected by q1 tasks to converge
-        # on the real total.
-        total = multiprocessing.Value('i', len(layers) * colors)
-    elif remap is not None:
-        # get the number of colors in the palette image
-        palettesize = len(make_palette(remap))
+    # 创建一个共享内存计数器，表示任务总数和已完成任务数
+    已完成任务数 = multiprocessing.Value('i', 0)
+    if 颜色数 is not None:
+        # 这只是一个估计值，因为量化可能会生成更少的颜色
+        # 该值由第一个任务队列校正以收敛于实际总数
+        总任务数 = multiprocessing.Value('i', len(图层) * 颜色数)
+    elif 重映射 is not None:
+        # 得到调色板图像的银色数量
+        调色板大小 = len(制作调色板(重映射))
         # this is only an estimate because remapping can result in less colors
         # than in the remap variable. This value is corrected by q1 tasks to converge
         # on the real total.
-        total = multiprocessing.Value('i', len(layers) * palettesize)
+        # 这只是一个估计值，因为量化可能会生成更少的颜色
+        # 该值由第一个任务队列校正以收敛于实际总数
+        总任务数 = multiprocessing.Value('i', len(图层) * 调色板大小)
     else:
-        #argparse should have caught this
-        raise Exception("One of the arguments 'colors' or 'remap' must be specified")
+        # argparse 应当已经提前捕获这个错误
+        raise Exception("应当提供 'colors' 和 'remap' 至少一个参数")
 
-    # create and start processes
-    processes = []
-    for i in range(processcount):
-        p = multiprocessing.Process(target=process_worker, args=(q1, q2, progress, total, layers, layers_lock, locals()))
-        p.name = "color_trace worker #" + str(i)
-        p.start()
-        processes.append(p)
+    # 创建和开始进程
+    进程列表 = []
+    for i in range(进程数):
+        进程 = multiprocessing.Process(target=进程处理, args=(第一个任务队列, 第二个任务队列, 已完成任务数, 总任务数, 图层, 图层锁, locals()))
+        进程.name = "color_trace worker #" + str(i)
+        进程.start()
+        进程列表.append(进程)
 
     try:
-        # so for each input and (dir-appended) output...
-        for index, (i, o) in enumerate(zip(inputs, outputs)):
-            verbose(i, ' -> ', o)
+        # 对每个收入和相应的输出
+        for 索引, (输入, 输出) in enumerate(zip(输入列表, 输出列表)):
+            汇报(输入, ' -> ', 输出)
 
             # add a job to the first job queue
-            q1.put({ 'input': i, 'output': o, 'findex': index })
-
+            第一个任务队列.put({'input': 输入, 'output': 输出, 'findex': 索引})
 
         # show progress until all jobs have been completed
-        while progress.value < total.value:
-            sys.stdout.write("\r%.1f%%" % (progress.value / total.value * 100))
+        while 已完成任务数.value < 总任务数.value:
+            sys.stdout.write("\r%.1f%%" % (已完成任务数.value / 总任务数.value * 100))
             sys.stdout.flush()
             time.sleep(0.25)
 
         sys.stdout.write("\rTracing complete!\n")
 
         # join the queues just in case progress is wrong
-        q1.join()
-        q2.join()
+        第一个任务队列.join()
+        第二个任务队列.join()
     except (Exception, KeyboardInterrupt) as e:
         # shut down subproesses
-        for p in processes:
-            p.terminate()
-        shutil.rmtree(tmp)
+        for 进程 in 进程列表:
+            进程.terminate()
+        shutil.rmtree(临时文件)
         raise e
 
     # close all processes
-    for p in processes:
-        p.terminate()
-    shutil.rmtree(tmp)
+    for 进程 in 进程列表:
+        进程.terminate()
+    shutil.rmtree(临时文件)
 
 
-def remfiles(*filepaths):
-    """remove file paths if they exist"""
+def 删除文件(*filepaths):
+    """如果文件存在则删除"""
     for f in filepaths:
         if os.path.exists(f):
             os.remove(f)
 
 
-def main(args=None):
+def main(参数=None):
     """main function to collect arguments and run color_trace_multi
 
     args: if specified, a Namespace of arguments (see argparse) to use instead
         of those supplied to this script at the command line
 """
-    if args is None:
-        args = get_args()
+    if 参数 is None:
+        参数 = 获得参数()
 
-    #set verbosity level
-    if args.verbose:
-        global VERBOSITY_LEVEL
-        VERBOSITY_LEVEL = 1
+    # set verbosity level
+    if 参数.verbose:
+        global 日志级别
+        日志级别 = 1
 
     # set output filename pattern depending on --output argument
-    if args.output is None:
-        output_pattern = "{0}.svg"
-    elif '*' in args.output:
-        output_pattern = args.output.replace('*', "{0}")
+    if 参数.output is None:
+        输出形式 = "{0}.svg"
+    elif '*' in 参数.output:
+        输出形式 = 参数.output.replace('*', "{0}")
     else:
-        output_pattern = args.output
+        输出形式 = 参数.output
 
     # --directory: add dir to output paths
-    if args.directory is not None:
-        destdir = args.directory.strip('\"\'')
-        output_pattern = os.path.join(destdir, output_pattern)
+    if 参数.directory is not None:
+        目标文件夹 = 参数.directory.strip('\"\'')
+        输出形式 = os.path.join(目标文件夹, 输出形式)
 
-    # set processcount if not defined
-    if args.cores is None:
+    # 如果没有指定的话，设置进程数
+    if 参数.cores is None:
         try:
-            processcount = multiprocessing.cpu_count()
+            进程数 = multiprocessing.cpu_count()
         except NotImplementedError:
-            verbose("Could not determine total number of cores, assuming 1")
-            processcount = 1
+            汇报("Could not determine total number of cores, assuming 1")
+            进程数 = 1
     else:
-        processcount = args.cores
+        进程数 = 参数.cores
 
     # collect only those arguments needed for color_trace_multi
-    inputs_outputs = zip(*get_inputs_outputs(args.input, output_pattern))
+    输入输出 = zip(*得到输入输出(参数.input, 输出形式))
     try:
-        inputs, outputs = inputs_outputs
-    except ValueError: #nothing to unpack
-        inputs, outputs = [], []
-    if args.floydsteinberg:
-        dither = 'floydsteinberg'
-    elif args.riemersma:
-        dither = 'riemersma'
+        输入列表, 输出列表 = 输入输出
+    except ValueError:  # nothing to unpack
+        输入列表, 输出列表 = [], []
+    if 参数.floydsteinberg:
+        拟色 = 'floydsteinberg'
+    elif 参数.riemersma:
+        拟色 = 'riemersma'
     else:
-        dither = None
-    colors = args.colors
-    color_trace_kwargs = vars(args)
+        拟色 = None
+    颜色数 = 参数.colors
+    彩色描摹参数 = vars(参数)
     for k in ('colors', 'directory', 'input', 'output', 'cores', 'floydsteinberg', 'riemersma', 'verbose'):
-        color_trace_kwargs.pop(k)
+        彩色描摹参数.pop(k)
 
-##    color_trace_multi(inputs, outputs, colors, dither=dither, **color_trace_kwargs)
-    color_trace_multi(inputs, outputs, colors, processcount, dither=dither, **color_trace_kwargs)
-
-
+    彩色描摹(输入列表, 输出列表, 颜色数, 进程数, 拟色=拟色, **彩色描摹参数)
 
 if __name__ == '__main__':
     main()
