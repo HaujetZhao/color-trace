@@ -1,4 +1,4 @@
-[Gitee](https://gitee.com/haujet/color-trace)   [GitHub](https://github.com/HaujetZhao/) 
+[Gitee](https://gitee.com/haujet/color-trace)   [GitHub](https://github.com/HaujetZhao/color-trace) 
 
 #  Color Trace
 
