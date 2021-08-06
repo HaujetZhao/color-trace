@@ -42,11 +42,11 @@ import subprocess
 import argparse
 from glob import iglob
 import functools
-import queue
 import multiprocessing
 import queue
 import tempfile
 import time
+import shlex
 
 from svg_stack import svg_stack
 
@@ -74,13 +74,14 @@ def 处理命令(命令, stdinput=None, stdout_=False, stderr_=False):
 
     # process = subprocess.Popen(command, stdin=stdin_pipe, stderr=stderr_pipe, stdout=stdout_pipe,
     # shell=True, creationflags=subprocess.SW_HIDE)
-    进程 = subprocess.Popen(命令, stdin=stdin_pipe, stderr=stderr_pipe, stdout=stdout_pipe,
+    进程 = subprocess.Popen(shlex.split(命令), stdin=stdin_pipe, stderr=stderr_pipe, stdout=stdout_pipe,
                           shell=True)
 
     stdoutput, stderror = 进程.communicate(stdinput)
     # print(stderror)
     返回码 = 进程.wait()
     if 返回码 != 0:
+        # Exception(stderror)
         Exception(stderror.decode())
     if stdout_ and not stderr_:
         return stdoutput
@@ -100,7 +101,7 @@ def 重缩放(源, 目标, 缩放, 滤镜='lanczos'):
     if 缩放 == 1.0:  # just copy it over
         shutil.copyfile(源, 目标)
     else:
-        命令 = '"{convert}" "{src}" -filter {filter} -resize {resize}% "{dest}"'.format(
+        命令 = '{convert} "{src}" -filter {filter} -resize {resize}% "{dest}"'.format(
             convert=IMAGEMAGICK_CONVERT_路径, src=源, filter=滤镜, resize=缩放 * 100,
             dest=目标)
         处理命令(命令)
@@ -153,7 +154,7 @@ def 量化(源, 量化目标, 颜色数, 算法='mc', 拟色=None):
             拟色选项 = 拟色
         else:
             raise ValueError("Invalid dither type '{0}' for 'as' quantization".format(拟色))
-        命令 = '"{convert}" "{src}" -dither {dither} -colors {colors} "{dest}"'.format(
+        命令 = '{convert} "{src}" -dither {dither} -colors {colors} "{dest}"'.format(
             convert=IMAGEMAGICK_CONVERT_路径, src=源, dither=拟色选项, colors=颜色数, dest=量化目标)
         处理命令(命令)
 
@@ -196,7 +197,7 @@ def 调色板重映射(源, 重映射目标, 调色板图像, 拟色=None):
         拟色选项 = 拟色
     else:
         raise ValueError("不合理的重映射拟色类型：'{0}' ".format(拟色))
-    命令 = '"{convert}" "{src}" -dither {dither} -remap "{paletteimg}" "{dest}"'.format(
+    命令 = '{convert} "{src}" -dither {dither} -remap "{paletteimg}" "{dest}"'.format(
         convert=IMAGEMAGICK_CONVERT_路径, src=源, dither=拟色选项, paletteimg=调色板图像, dest=重映射目标)
     处理命令(命令)
 
@@ -204,7 +205,7 @@ def 调色板重映射(源, 重映射目标, 调色板图像, 拟色=None):
 def 制作调色板(源图像):
     """从源图像得到独特的颜色，返回 #rrggbb 16进制颜色"""
 
-    命令 = '"{convert}" "{srcimage}" -unique-colors -compress none ppm:-'.format(
+    命令 = '{convert} "{srcimage}" -unique-colors -compress none ppm:-'.format(
         convert=IMAGEMAGICK_CONVERT_路径, srcimage=源图像)
     stdoutput = 处理命令(命令, stdout_=True)
 
@@ -319,7 +320,7 @@ def 孤立颜色(源, 目标临时文件, 目标图层, 目标颜色, 调色板,
     # 新建一个很长的命令，当它达到足够长度时就执行
     # 因为分别执行填充命令非常的慢
     last_iteration = len(调色板) - 1  # new
-    命令前缀 = '"{convert}" "{src}" '.format(convert=IMAGEMAGICK_CONVERT_路径, src=源)
+    命令前缀 = '{convert} "{src}" '.format(convert=IMAGEMAGICK_CONVERT_路径, src=源)
     命令后缀 = ' "{target}"'.format(target=目标临时文件)
     命令中间 = ''
 
@@ -341,21 +342,21 @@ def 孤立颜色(源, 目标临时文件, 目标图层, 目标颜色, 调色板,
             命令中间 = ''  # reset
 
     # 现在将前景变黑，背景变白
-    命令 = '"{convert}" "{src}" -fill "{fillbg}" -opaque "{colorbg}" -fill "{fillfg}" -opaque "{colorfg}" "{dest}"'.format(
+    命令 = '{convert} "{src}" -fill "{fillbg}" -opaque "{colorbg}" -fill "{fillfg}" -opaque "{colorfg}" "{dest}"'.format(
         convert=IMAGEMAGICK_CONVERT_路径, src=目标临时文件, fillbg=背景白, colorbg=背景接近白,
         fillfg=前景黑, colorfg=前景接近黑, dest=目标图层)
     处理命令(命令, stdinput=stdinput)
 
 
 def 使用颜色填充(源, 目标):
-    命令 = '"{convert}" "{src}" -fill "{color}" +opaque none "{dest}"'.format(
+    命令 = '{convert} "{src}" -fill "{color}" +opaque none "{dest}"'.format(
         convert=IMAGEMAGICK_CONVERT_路径, src=源, color="#000000", dest=目标)
     处理命令(命令)
 
 
 def 得到宽度(源):
     """返回头像宽多少像素"""
-    命令 = '"{identify}" -ping -format "%w" "{src}"'.format(
+    命令 = '{identify} -ping -format "%w" "{src}"'.format(
         identify=IMAGEMAGICK_IDENTIFY_路径, src=源)
     stdoutput = 处理命令(命令, stdout_=True)
     宽 = int(stdoutput)
@@ -575,7 +576,7 @@ def 得到输入输出(arg_inputs, output_pattern="{0}.svg", ignore_duplicates=T
                 yield input_, output
 
 
-def 队列1_任务(队列2, 总数, 图层, 设置, 输入索引, 输入, 输出):
+def 队列1_任务(队列2, 总数, 图层, 设置, findex, input, output):
     """ 初始化文件、重新缩放、缩减颜色
 
     队列2: 第二个任务列表 (颜色孤立 + 临摹)
@@ -589,46 +590,46 @@ def 队列1_任务(队列2, 总数, 图层, 设置, 输入索引, 输入, 输出
     输出: 输出 svg 路径
 """
     # 如果输出目录不存在，则创建
-    目标文件夹 = os.path.dirname(os.path.abspath(输出))
+    目标文件夹 = os.path.dirname(os.path.abspath(output))
     if not os.path.exists(目标文件夹):
         os.makedirs(目标文件夹)
 
     # 临时文件会放置在各个输出文件的旁边
-    缩放文件 = os.path.abspath(os.path.join(设置['tmp'], '{0}~scaled.png'.format(输入索引)))
-    减色文件 = os.path.abspath(os.path.join(设置['tmp'], '{0}~reduced.png'.format(输入索引)))
+    缩放文件 = os.path.abspath(os.path.join(设置['临时文件'], '{0}~scaled.png'.format(findex)))
+    减色文件 = os.path.abspath(os.path.join(设置['临时文件'], '{0}~reduced.png'.format(findex)))
 
     try:
         # 如果跳过了量化，则必须使用不会增加颜色数量的缩放方法
-        if 设置['colors'] == 0:
+        if 设置['颜色数'] == 0:
             滤镜 = 'point'
         else:
             滤镜 = 'lanczos'
-        重缩放(输入, 缩放文件, 设置['prescale'], 滤镜=滤镜)
+        重缩放(input, 缩放文件, 设置['prescale'], 滤镜=滤镜)
 
-        if 设置['colors'] is not None:
-            量化(缩放文件, 减色文件, 设置['colors'], 算法=设置['quantization'], 拟色=设置['dither'])
+        if 设置['颜色数'] is not None:
+            量化(缩放文件, 减色文件, 设置['颜色数'], 算法=设置['quantization'], 拟色=设置['拟色'])
         elif 设置['remap'] is not None:
-            调色板重映射(缩放文件, 减色文件, 设置['remap'], 拟色=设置['dither'])
+            调色板重映射(缩放文件, 减色文件, 设置['remap'], 拟色=设置['拟色'])
         else:
             # argparse 应该已经抛出这个错误
             raise Exception("至少应该设置 'colors' 、 'remap' 中最少一个参数")
         调色板 = 制作调色板(减色文件)
 
         # 基于调色板中颜色的数量更新总数
-        if 设置['colors'] is not None:
-            总数.value -= 设置['colors'] - len(调色板)
+        if 设置['颜色数'] is not None:
+            总数.value -= 设置['颜色数'] - len(调色板)
         else:
             总数.value -= 设置['palettesize'] - len(调色板)
         # 初始化输入索引所指文件的图层
-        图层[输入索引] += [False] * len(调色板)
+        图层[findex] += [False] * len(调色板)
 
         # 得到图像宽度
-        宽度 = 得到宽度(输入)
+        宽度 = 得到宽度(input)
 
         # 添加任务到第二个任务队列
         for i, 颜色 in enumerate(调色板):
             队列2.put(
-                {'width': 宽度, 'color': 颜色, 'palette': 调色板, 'reduced': 减色文件, 'output': 输出, 'findex': 输入索引, 'cindex': i})
+                {'width': 宽度, 'color': 颜色, 'palette': 调色板, 'reduced': 减色文件, 'output': output, 'findex': findex, 'cindex': i})
 
     except (Exception, KeyboardInterrupt) as e:
         # 发生错误时删除临时文件
@@ -655,10 +656,10 @@ def 队列2_任务(图层, 图层锁, 设置, 宽度, 颜色, 调色板, 文件�
     输出路径: 输出路径，svg 文件
 """
     # 临时文件放在每个输出文件的旁边
-    该文件孤立颜色图像 = os.path.abspath(os.path.join(设置['tmp'], '{0}-{1}~isolated.png'.format(文件索引, 颜色索引)))
-    该文件图层 = os.path.abspath(os.path.join(设置['tmp'], '{0}-{1}~layer.ppm'.format(文件索引, 颜色索引)))
+    该文件孤立颜色图像 = os.path.abspath(os.path.join(设置['临时文件'], '{0}-{1}~isolated.png'.format(文件索引, 颜色索引)))
+    该文件图层 = os.path.abspath(os.path.join(设置['临时文件'], '{0}-{1}~layer.ppm'.format(文件索引, 颜色索引)))
     描摹格式 = '{0}-{1}~trace.svg'
-    描摹文件 = os.path.abspath(os.path.join(设置['tmp'], 描摹格式.format(文件索引, 颜色索引)))
+    描摹文件 = os.path.abspath(os.path.join(设置['临时文件'], 描摹格式.format(文件索引, 颜色索引)))
 
     try:
         # 如果颜色索引是 0 并且 -bg 选项被激活
@@ -693,7 +694,7 @@ def 队列2_任务(图层, 图层锁, 设置, 宽度, 颜色, 调色板, 文件�
         # 开始 svg 堆栈
         布局 = svg_stack.CBoxLayout()
 
-        临摹图层 = [os.path.abspath(os.path.join(设置['tmp'], 描摹格式.format(文件索引, l))) for l in range(len(图层[文件索引]))]
+        临摹图层 = [os.path.abspath(os.path.join(设置['临时文件'], 描摹格式.format(文件索引, l))) for l in range(len(图层[文件索引]))]
 
         # 添加图层到 svg
         for t in 临摹图层:
@@ -788,6 +789,7 @@ def 彩色描摹(输入列表, 输出列表, 颜色数, 进程数, quantization=
     # 创建一个读取和修改图层的锁
     图层锁 = multiprocessing.Lock()
 
+
     # 创建一个共享内存计数器，表示任务总数和已完成任务数
     已完成任务数 = multiprocessing.Value('i', 0)
     if 颜色数 is not None:
@@ -810,7 +812,20 @@ def 彩色描摹(输入列表, 输出列表, 颜色数, 进程数, quantization=
     # 创建和开始进程
     进程列表 = []
     for i in range(进程数):
-        进程 = multiprocessing.Process(target=进程处理, args=(第一个任务队列, 第二个任务队列, 已完成任务数, 总任务数, 图层, 图层锁, locals()))
+
+        本地 = locals()
+        本地.pop('图层')
+        本地.pop('图层锁')
+        本地.pop('已完成任务数')
+        本地.pop('总任务数')
+        本地.pop('第一个任务队列')
+        本地.pop('第二个任务队列')
+        本地.pop('管理器')
+
+        # from pprint import pprint
+        # pprint(本地)
+
+        进程 = multiprocessing.Process(target=进程处理, args=(第一个任务队列, 第二个任务队列, 已完成任务数, 总任务数, 图层, 图层锁, 本地))
         进程.name = "color_trace worker #" + str(i)
         进程.start()
         进程列表.append(进程)
