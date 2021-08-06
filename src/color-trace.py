@@ -53,6 +53,7 @@ from svg_stack import svg_stack
 
 
 def 汇报(*args, level=1):
+    global 汇报级别
     if 汇报级别 >= level:
         print(*args)
 
