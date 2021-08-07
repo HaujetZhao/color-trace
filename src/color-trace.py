@@ -32,7 +32,7 @@ potrace_命令 = 'potrace'
 potrace_选项 = ''
 
 命令行最长 = 1900  # 命令行长度限制
-汇报级别 = 0  # 不止是一个常数，它也会爱 -v/--verbose 选项影响
+汇报级别 = 1  # 不止是一个常数，它也会爱 -v/--verbose 选项影响
 
 版本 = '1.01'
 
@@ -47,7 +47,9 @@ import queue
 import tempfile
 import time
 import shlex
+import re
 from pprint import pprint
+
 
 from svg_stack import svg_stack
 
@@ -206,27 +208,13 @@ def 用调色板对图片重映射(源, 重映射目标, 调色板图像, 拟色
 def 制作颜色表(源图像):
     """从源图像得到特征色，返回 #rrggbb 16进制颜色"""
 
-    命令 = '{convert} "{srcimage}" -unique-colors -compress none ppm:-'.format(
-        convert=ImageMagick_convert_命令, srcimage=源图像)
-    stdoutput = 处理命令(命令, stdout_=True)
+    命令 = f'{ImageMagick_convert_命令} "{源图像}"  -unique-colors txt:-'
+    stdoutput = 处理命令(命令, stdout_=True) # 这个输出中包含了颜色
 
-    # separate stdout ppm image into its colors
-    # 将 stdout ppm 图像分离到它的颜色
-    ppm_行 = stdoutput.decode().splitlines()[3:]
-    del stdoutput  # 提前释放一部分内存
-    颜色值 = tuple()
-    for 行 in ppm_行:
-        颜色值 += tuple(int(s) for s in 行.split())
+    正则模式 = '#[0-9A-F]{6}'
+    IM输出 = stdoutput.decode(sys.getfilesystemencoding())
+    十六进制颜色 = re.findall(正则模式, IM输出)
 
-    # create i:j ranges that get every 3 values in colorvals
-    # 建立在颜色值中得到每 3 个数值的 i:j 范围
-    i范围 = range(0, len(颜色值), 3)
-    j范围 = range(3, len(颜色值) + 1, 3)
-    十六进制颜色 = []
-    for i, j in zip(i范围, j范围):
-        rgb = 颜色值[i:j]
-        十六进制颜色.append("#{0:02x}{1:02x}{2:02x}".format(*rgb))
-    十六进制颜色.reverse()  # 生成由亮色背景到暗色背景
     return 十六进制颜色
 
 
