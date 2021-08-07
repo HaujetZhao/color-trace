@@ -507,7 +507,7 @@ def 队列1_任务(队列2, 总数, 图层, 设置, findex, 输入文件, output
         if 设置['颜色数'] is not None:
             总数.value -= 设置['颜色数'] - len(调色板)
         else:
-            总数.value -= 设置['palettesize'] - len(调色板)
+            总数.value -= 设置['调色板颜色数'] - len(调色板)
         # 初始化输入索引所指文件的图层
         图层[findex] += [False] * len(调色板)
 
@@ -691,15 +691,15 @@ def 彩色描摹(输入列表, 输出列表, 颜色数, 进程数, quantization=
         # 这只是一个估计值，因为量化可能会生成更少的颜色
         # 该值由第一个任务队列校正以收敛于实际总数
         总任务数 = multiprocessing.Value('i', len(图层) * 颜色数)
-    elif 重映射 is not None:
+    elif remap is not None:
         # 得到调色板图像的银色数量
-        调色板大小 = len(制作调色板(重映射))
+        调色板颜色数 = len(制作调色板(remap))
         # this is only an estimate because remapping can result in less colors
         # than in the remap variable. This value is corrected by q1 tasks to converge
         # on the real total.
         # 这只是一个估计值，因为量化可能会生成更少的颜色
         # 该值由第一个任务队列校正以收敛于实际总数
-        总任务数 = multiprocessing.Value('i', len(图层) * 调色板大小)
+        总任务数 = multiprocessing.Value('i', len(图层) * 调色板颜色数)
     else:
         # argparse 应当已经提前捕获这个错误
         raise Exception("应当提供 'colors' 和 'remap' 至少一个参数")
