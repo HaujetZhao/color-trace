@@ -97,15 +97,13 @@ def 处理命令(命令, stdinput=None, stdout_=False, stderr_=False):
 
 
 def 重缩放(源, 目标, 缩放, 滤镜='lanczos'):
-    """rescale src image to scale, save to destscale
-
-    full list of filters is available from ImageMagick's documentation.
+    """使用 ImageMagick 将图片重新缩放、转为 png 格式
 """
-    if 缩放 == 1.0:  # just copy it over
-        if os.path.splitext(源)[1].lower() not in ['.png']:
+    if 缩放 == 1.0:  # 不缩放。检查格式
+        if os.path.splitext(源)[1].lower() not in ['.png']: # 非 png 则转格式
             命令 = f'{ImageMagick_convert_命令} "{源}" "{目标}"'
             处理命令(命令)
-        else:
+        else: # png 格式则直接复制
             shutil.copyfile(源, 目标)
     else:
         命令 = '{convert} "{src}" -filter {filter} -resize {resize}% "{dest}"'.format(
@@ -113,8 +111,7 @@ def 重缩放(源, 目标, 缩放, 滤镜='lanczos'):
             dest=目标)
         处理命令(命令)
 
-
-def 量化(源, 量化目标, 颜色数, 算法='mc', 拟色=None):
+def 量化缩减图片颜色(源, 量化目标, 颜色数, 算法='mc', 拟色=None):
     """将源图像量化到指定数量的颜色，保存到量化目标
 
     量化：缩减颜色数量，只保留最主要的颜色
@@ -180,7 +177,7 @@ def 量化(源, 量化目标, 颜色数, 算法='mc', 拟色=None):
         raise NotImplementedError('未知的量化算法 "{0}"'.format(算法))
 
 
-def 调色板重映射(源, 重映射目标, 调色板图像, 拟色=None):
+def 用调色板对图片重映射(源, 重映射目标, 调色板图像, 拟色=None):
     """用调色板图像的颜色重映射源图像，保存到重映射目标
 
     源: 源图像路径
@@ -190,7 +187,7 @@ def 调色板重映射(源, 重映射目标, 调色板图像, 拟色=None):
         选项有：None, 'floydsteinberg', 和 'riemersma'
 """
 
-    if not os.path.exists(调色板图像):  # 因为 ImageMagick 不会检查
+    if not os.path.exists(调色板图像):  # 确认下调色板图像存在
         raise IOError("未找到重映射调色板：{0} ".format(调色板图像))
 
     if 拟色 is None:
@@ -199,13 +196,15 @@ def 调色板重映射(源, 重映射目标, 调色板图像, 拟色=None):
         拟色选项 = 拟色
     else:
         raise ValueError("不合理的重映射拟色类型：'{0}' ".format(拟色))
-    命令 = '{convert} "{src}" -dither {dither} -remap "{paletteimg}" "{dest}"'.format(
-        convert=ImageMagick_convert_命令, src=源, dither=拟色选项, paletteimg=调色板图像, dest=重映射目标)
+
+    # magick convert "src.png" -dither None -remap "platte.png" "output.png"
+    命令 = f'{ImageMagick_convert_命令} "{源}" -dither {拟色选项} -remap "{调色板图像}" "{重映射目标}"'
     处理命令(命令)
 
 
-def 制作调色板(源图像):
-    """从源图像得到独特的颜色，返回 #rrggbb 16进制颜色"""
+
+def 制作颜色表(源图像):
+    """从源图像得到特征色，返回 #rrggbb 16进制颜色"""
 
     命令 = '{convert} "{srcimage}" -unique-colors -compress none ppm:-'.format(
         convert=ImageMagick_convert_命令, srcimage=源图像)
@@ -491,25 +490,25 @@ def 队列1_任务(队列2, 总数, 图层, 设置, findex, 输入文件, output
         重缩放(输入文件, 缩放文件, 设置['prescale'], 滤镜=滤镜)
 
 
-        if 设置['颜色数'] is not None:
-            量化(缩放文件, 减色文件, 设置['颜色数'], 算法=设置['quantization'], 拟色=设置['拟色'])
-        elif 设置['remap'] is not None:
-            调色板重映射(缩放文件, 减色文件, 设置['remap'], 拟色=设置['拟色'])
+        if 设置['颜色数'] is not None: # 如果设置了颜色数量，就将原图缩减颜色
+            量化缩减图片颜色(缩放文件, 减色文件, 设置['颜色数'], 算法=设置['quantization'], 拟色=设置['拟色'])
+        elif 设置['remap'] is not None: # 如果设置了调色板图片，就将原图按调色板进行重映射
+            用调色板对图片重映射(缩放文件, 减色文件, 设置['remap'], 拟色=设置['拟色'])
         else:
             # argparse 应该已经抛出这个错误
             raise Exception("至少应该设置 'colors' 、 'remap' 中最少一个参数")
         if 设置['颜色数'] == 1:
-            调色板 = ['#000000']
+            颜色表 = ['#000000']
         else:
-            调色板 = 制作调色板(减色文件)
+            颜色表 = 制作颜色表(减色文件)
 
         # 基于调色板中颜色的数量更新总数
         if 设置['颜色数'] is not None:
-            总数.value -= 设置['颜色数'] - len(调色板)
+            总数.value -= 设置['颜色数'] - len(颜色表)
         else:
-            总数.value -= 设置['调色板颜色数'] - len(调色板)
+            总数.value -= 设置['调色板颜色数'] - len(颜色表)
         # 初始化输入索引所指文件的图层
-        图层[findex] += [False] * len(调色板)
+        图层[findex] += [False] * len(颜色表)
 
         # 得到图像宽度
         # 优先使用用户设置的宽度，如果没设置，那就去获得原来的宽度
@@ -519,9 +518,17 @@ def 队列1_任务(队列2, 总数, 图层, 设置, findex, 输入文件, output
 
 
         # 添加任务到第二个任务队列
-        for i, 颜色 in enumerate(调色板):
+        for i, 颜色 in enumerate(颜色表):
             队列2.put(
-                {'宽度': 宽度, '高度': 高度, '分辨率': 分辨率, '颜色': 颜色, '调色板': 调色板, '已缩减图像': 减色文件, '输出路径': output, '文件索引': findex, '颜色索引': i})
+                {'宽度': 宽度,
+                 '高度': 高度,
+                 '分辨率': 分辨率,
+                 '颜色': 颜色,
+                 '调色板': 颜色表,
+                 '已缩减图像': 减色文件,
+                 '输出路径': output,
+                 '文件索引': findex,
+                 '颜色索引': i})
 
     except (Exception, KeyboardInterrupt) as e:
         # 发生错误时删除临时文件
@@ -693,7 +700,7 @@ def 彩色描摹(输入列表, 输出列表, 颜色数, 进程数, quantization=
         总任务数 = multiprocessing.Value('i', len(图层) * 颜色数)
     elif remap is not None:
         # 得到调色板图像的银色数量
-        调色板颜色数 = len(制作调色板(remap))
+        调色板颜色数 = len(制作颜色表(remap))
         # this is only an estimate because remapping can result in less colors
         # than in the remap variable. This value is corrected by q1 tasks to converge
         # on the real total.
