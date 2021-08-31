@@ -52,7 +52,8 @@ from pprint import pprint
 
 
 from .svg_stack import svg_stack
-
+from .foreign import cli_pngnq, cli_potrace, cli_imagemagick, cli_pngquant
+from .exception import *
 
 def 汇报(*args, level=1):
     global 汇报级别
@@ -84,14 +85,15 @@ def 处理命令(命令, stdinput=None, stdout_=False, stderr_=False):
 
     stdoutput, stderror = 进程.communicate(input=stdinput)
 
-    返回码 = 进程.wait()
+    # 10 分钟不结束就报错，免得一直卡住
+    返回码 = 进程.wait(timeout=600)
     if 返回码 != 0:
         raise Exception(stderror.decode(encoding=sys.getfilesystemencoding()))
 
     if stdout_ and not stderr_:
         return stdoutput
     elif stderr_ and not stdout_:
-        return stderr
+        return stderror
     elif stdout_ and stderr_:
         return (stdoutput, stderror)
     elif not stdout_ and not stderr_:
@@ -103,14 +105,12 @@ def 重缩放(源, 目标, 缩放, 滤镜='lanczos'):
 """
     if 缩放 == 1.0:  # 不缩放。检查格式
         if os.path.splitext(源)[1].lower() not in ['.png']: # 非 png 则转格式
-            命令 = f'{ImageMagick_convert_命令} "{源}" "{目标}"'
+            命令 = f'{cli_imagemagick} convert "{源}" "{目标}"'
             处理命令(命令)
         else: # png 格式则直接复制
             shutil.copyfile(源, 目标)
     else:
-        命令 = '{convert} "{src}" -filter {filter} -resize {resize}% "{dest}"'.format(
-            convert=ImageMagick_convert_命令, src=源, filter=滤镜, resize=缩放 * 100,
-            dest=目标)
+        命令 = f'{cli_imagemagick} convert "{源}" -filter {滤镜} -resize {缩放 * 100}% "{目标}"'
         处理命令(命令)
 
 def 量化缩减图片颜色(源, 量化目标, 颜色数, 算法='mc', 拟色=None):
@@ -143,9 +143,9 @@ def 量化缩减图片颜色(源, 量化目标, 颜色数, 算法='mc', 拟色=N
         elif 拟色 == 'floydsteinberg':
             拟色选项 = ''
         else:
-            raise ValueError("对 'mc' 量化方法使用了错误的拟色类型：'{0}' ".format(拟色))
+            raise ColorTraceForeignCallError(f"(pngquant): 对 'mc' 量化方法使用了错误的拟色类型: {拟色!r}")
         # 因为 pngquant 不能保存到中文路径，所以使用 stdin/stdout 操作 pngquant
-        命令 = f'{pngquant_命令} --force {拟色选项} {颜色数} - < "{源}" > "{量化目标}"'
+        命令 = f'{cli_pngquant} --force {拟色选项} {颜色数} - < "{源}" > "{量化目标}"'
         stdoutput = 处理命令(命令)
 
     elif 算法 == 'as':  # adaptive spatial subdivision 自适应空间细分
@@ -154,9 +154,8 @@ def 量化缩减图片颜色(源, 量化目标, 颜色数, 算法='mc', 拟色=N
         elif 拟色 in ('floydsteinberg', 'riemersma'):
             拟色选项 = 拟色
         else:
-            raise ValueError("Invalid dither type '{0}' for 'as' quantization".format(拟色))
-        命令 = '{convert} "{src}" -dither {dither} -colors {colors} "{dest}"'.format(
-            convert=ImageMagick_convert_命令, src=源, dither=拟色选项, colors=颜色数, dest=量化目标)
+            raise ColorTraceForeignCallError(f"(imagemagick): 对 'as' 量化方法使用了错误的拟色类型 {拟色!r}")
+        命令 = f'{cli_imagemagick} convert "{源}" -dither {拟色选项} -colors {颜色数} "{量化目标}"'
         处理命令(命令)
 
     elif 算法 == 'nq':  # neuquant
@@ -167,16 +166,15 @@ def 量化缩减图片颜色(源, 量化目标, 颜色数, 算法='mc', 拟色=N
         elif 拟色 == 'floydsteinberg':
             拟色选项 = '-Q f '
         else:
-            raise ValueError("Invalid dither type '{0}' for 'nq' quantization".format(拟色))
-        命令 = '"{pngnq}" -f {dither}-d "{destdir}" -n {colors} -e {ext} "{src}"'.format(
-            pngnq=pngnq_路径, dither=拟色选项, destdir=destdir, colors=颜色数, ext=ext, src=源)
+            raise ColorTraceForeignCallError(f"(imagemagick): 对 'nq' 量化方法使用了错误的拟色类型 {拟色!r}")
+        命令 = f'"{cli_pngnq}" -f {拟色选项} -d "{destdir}" -n {颜色数} -e {ext} "{源}"'
         处理命令(命令)
         # 因为 pngnq 不支持保存到自定义目录，所以先输出文件到当前目录，再移动到量化目标
         旧输出 = os.path.join(destdir, os.path.splitext(os.path.basename(源))[0] + ext)
         os.rename(旧输出, 量化目标)
     else:
         # 在错误到达这里前 argparse 应该已经先捕捉到了
-        raise NotImplementedError('未知的量化算法 "{0}"'.format(算法))
+        raise NotImplementedError(f'未知的量化算法 {算法!r}')
 
 
 def 用调色板对图片重映射(源, 重映射目标, 调色板图像, 拟色=None):
@@ -190,17 +188,17 @@ def 用调色板对图片重映射(源, 重映射目标, 调色板图像, 拟色
 """
 
     if not os.path.exists(调色板图像):  # 确认下调色板图像存在
-        raise IOError("未找到重映射调色板：{0} ".format(调色板图像))
+        raise IOError(f"未找到重映射调色板：{调色板图像} ")
 
     if 拟色 is None:
         拟色选项 = 'None'
     elif 拟色 in ('floydsteinberg', 'riemersma'):
         拟色选项 = 拟色
     else:
-        raise ValueError("不合理的重映射拟色类型：'{0}' ".format(拟色))
+        raise ColorTraceForeignCallError(f"(imagemagick): 不合理的重映射拟色类型: {拟色!r}")
 
     # magick convert "src.png" -dither None -remap "platte.png" "output.png"
-    命令 = f'{ImageMagick_convert_命令} "{源}" -dither {拟色选项} -remap "{调色板图像}" "{重映射目标}"'
+    命令 = f'{cli_imagemagick} convert "{源}" -dither {拟色选项} -remap "{调色板图像}" "{重映射目标}"'
     处理命令(命令)
 
 
@@ -208,7 +206,7 @@ def 用调色板对图片重映射(源, 重映射目标, 调色板图像, 拟色
 def 制作颜色表(源图像):
     """从源图像得到特征色，返回 #rrggbb 16进制颜色"""
 
-    命令 = f'{ImageMagick_convert_命令} "{源图像}"  -unique-colors txt:-'
+    命令 = f'{cli_imagemagick} convert "{源图像}"  -unique-colors txt:-'
     stdoutput = 处理命令(命令, stdout_=True) # 这个输出中包含了颜色
 
     正则模式 = '#[0-9A-F]{6}'
@@ -234,11 +232,11 @@ def 得到调色板外的颜色(调色板, 从黑色开始=True, 规避颜色=No
     else:
         颜色范围 = range(int('ffffff', 16), 0, -1)
     for i in 颜色范围:
-        颜色 = "#{0:06x}".format(i)
+        颜色 = f"#{i:06x}"
         if 颜色 not in 最终调色板:
             return 颜色
     # 当调色板加上规避颜色，包含所有颜色 #000000-#ffffff 时，抛出错误
-    raise Exception("未能找到调色板之外的颜色")
+    raise ColorTraceError("未能找到调色板之外的颜色")
 
 
 # def isolate_color(src, destlayer, target_color, palette, stack=False):
@@ -309,8 +307,8 @@ def 孤立颜色(源, 目标临时文件, 目标图层, 目标颜色, 调色板,
     # 新建一个很长的命令，当它达到足够长度时就执行
     # 因为分别执行填充命令非常的慢
     last_iteration = len(调色板) - 1  # new
-    命令前缀 = '{convert} "{src}" '.format(convert=ImageMagick_convert_命令, src=源)
-    命令后缀 = ' "{target}"'.format(target=目标临时文件)
+    命令前缀 = f'{cli_imagemagick} convert "{源}" '
+    命令后缀 = f' "{目标临时文件}"'
     命令中间 = ''
 
     for i, 颜色 in enumerate(调色板):
@@ -322,7 +320,7 @@ def 孤立颜色(源, 目标临时文件, 目标图层, 目标颜色, 调色板,
         else:
             填充色 = 背景接近白
 
-        命令中间 += ' -fill "{fill}" -opaque "{color}"'.format(fill=填充色, color=颜色)
+        命令中间 += f' -fill "{填充色}" -opaque "{颜色}"'
         if len(命令中间) >= 命令行最长 or (i == last_iteration and 命令中间):
             命令 = 命令前缀 + 命令中间 + 命令后缀
 
@@ -331,22 +329,18 @@ def 孤立颜色(源, 目标临时文件, 目标图层, 目标颜色, 调色板,
             命令中间 = ''  # reset
 
     # 现在将前景变黑，背景变白
-    命令 = '{convert} "{src}" -fill "{fillbg}" -opaque "{colorbg}" -fill "{fillfg}" -opaque "{colorfg}" "{dest}"'.format(
-        convert=ImageMagick_convert_命令, src=目标临时文件, fillbg=背景白, colorbg=背景接近白,
-        fillfg=前景黑, colorfg=前景接近黑, dest=目标图层)
+    命令 = f'{cli_imagemagick} convert "{目标临时文件}" -fill "{背景白}" -opaque "{背景接近白}" -fill "{前景黑}" -opaque "{前景接近黑}" "{目标图层}"'
     处理命令(命令, stdinput=stdinput)
 
 
 def 使用颜色填充(源, 目标):
-    命令 = '{convert} "{src}" -fill "{color}" +opaque none "{dest}"'.format(
-        convert=ImageMagick_convert_命令, src=源, color="#000000", dest=目标)
+    命令 = f'{cli_imagemagick} convert "{源}" -fill "#000000" +opaque none "{目标}"'
     处理命令(命令)
 
 
 def 得到宽度(源):
     """返回头像宽多少像素"""
-    命令 = '{identify} -ping -format "%w" "{src}"'.format(
-        identify=ImageMagick_identify_命令, src=源)
+    命令 = f'{cli_imagemagick} identify -ping -format "%w" "{源}"'
     stdoutput = 处理命令(命令, stdout_=True)
     宽 = int(stdoutput)
     return 宽
@@ -371,7 +365,7 @@ def 描摹(源, 描摹目标, 输出颜色, 抑制斑点像素数=2, 平滑转�
     高度参数 = f'--height {高度}' if 高度 is not None else ''
     分辨率参数 = f'--resolution {分辨率}' if 分辨率 is not None else ''
 
-    命令 = f'''{potrace_命令} --svg -o "{描摹目标}" -C "{输出颜色}" -t {抑制斑点像素数} -a {平滑转角} -O {优化路径}
+    命令 = f'''{cli_potrace} --svg -o "{描摹目标}" -C "{输出颜色}" -t {抑制斑点像素数} -a {平滑转角} -O {优化路径}
                 {宽度参数} {高度参数} {分辨率参数} "{源}"'''
     汇报(命令)
 
@@ -390,13 +384,13 @@ def 检查范围(min, max, typefunc, typename, strval):
     try:
         val = typefunc(strval)
     except ValueError:
-        msg = "must be {typename}".format(typename=typename)
+        msg = f"must be {typename}"
         raise argparse.ArgumentTypeError(msg)
     if (max is not None) and (not min <= val <= max):
-        msg = "must be between {min} and {max}".format(min=min, max=max)
+        msg = f"must be between {min} and {max}"
         raise argparse.ArgumentTypeError(msg)
     elif not min <= val:
-        msg = "must be {min} or greater".format(min=min)
+        msg = f"must be {min} or greater"
         raise argparse.ArgumentTypeError(msg)
     return val
 
@@ -466,8 +460,8 @@ def 队列1_任务(队列2, 总数, 图层, 设置, findex, 输入文件, output
         os.makedirs(目标文件夹)
 
     # 临时文件会放置在各个输出文件的旁边
-    缩放文件 = os.path.abspath(os.path.join(设置['临时文件'], '{0}~scaled.png'.format(findex)))
-    减色文件 = os.path.abspath(os.path.join(设置['临时文件'], '{0}~reduced.png'.format(findex)))
+    缩放文件 = os.path.abspath(os.path.join(设置['临时文件'], f'{findex}~scaled.png'))
+    减色文件 = os.path.abspath(os.path.join(设置['临时文件'], f'{findex}~reduced.png'))
 
     try:
         # 如果跳过了量化，则必须使用不会增加颜色数量的缩放方法
@@ -543,16 +537,16 @@ def 队列2_任务(图层, 图层锁, 设置, 宽度, 高度, 分辨率, 颜色,
     输出路径: 输出路径，svg 文件
 """
     # 临时文件放在每个输出文件的旁边
-    该文件孤立颜色图像 = os.path.abspath(os.path.join(设置['临时文件'], '{0}-{1}~isolated.png'.format(文件索引, 颜色索引)))
-    该文件图层 = os.path.abspath(os.path.join(设置['临时文件'], '{0}-{1}~layer.ppm'.format(文件索引, 颜色索引)))
+    该文件孤立颜色图像 = os.path.abspath(os.path.join(设置['临时文件'], f'{文件索引}-{颜色索引}~isolated.png'))
+    该文件图层 = os.path.abspath(os.path.join(设置['临时文件'], f'{文件索引}-{颜色索引}~layer.ppm'))
     描摹格式 = '{0}-{1}~trace.svg'
-    描摹文件 = os.path.abspath(os.path.join(设置['临时文件'], 描摹格式.format(文件索引, 颜色索引)))
+    描摹文件 = os.path.abspath(os.path.join(设置['临时文件'], f'{文件索引}-{颜色索引}~trace.svg'))
 
     try:
         # 如果颜色索引是 0 并且 -bg 选项被激活
         # 直接用匹配的颜色填充图像，否则使用孤立颜色
         if 颜色索引 == 0 and 设置['background']:
-            汇报("Index {}".format(颜色))
+            汇报(f"Index {颜色}")
             使用颜色填充(已缩减图像, 该文件图层)
         else:
             孤立颜色(已缩减图像, 该文件孤立颜色图像, 该文件图层, 颜色, 调色板, stack=设置['stack'])
