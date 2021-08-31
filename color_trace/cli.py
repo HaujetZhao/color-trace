@@ -51,7 +51,7 @@ import re
 from pprint import pprint
 
 
-from svg_stack import svg_stack
+from .svg_stack import svg_stack
 
 
 def 汇报(*args, level=1):
@@ -371,7 +371,7 @@ def 描摹(源, 描摹目标, 输出颜色, 抑制斑点像素数=2, 平滑转�
     高度参数 = f'--height {高度}' if 高度 is not None else ''
     分辨率参数 = f'--resolution {分辨率}' if 分辨率 is not None else ''
 
-    命令 = f'''{potrace_命令} --svg -o "{描摹目标}" -C "{输出颜色}" -t {抑制斑点像素数} -a {平滑转角} -O {优化路径} 
+    命令 = f'''{potrace_命令} --svg -o "{描摹目标}" -C "{输出颜色}" -t {抑制斑点像素数} -a {平滑转角} -O {优化路径}
                 {宽度参数} {高度参数} {分辨率参数} "{源}"'''
     汇报(命令)
 
