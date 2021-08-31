@@ -1,4 +1,4 @@
-[Gitee](https://gitee.com/haujet/color-trace)   [GitHub](https://github.com/HaujetZhao/color-trace) 
+[Gitee](https://gitee.com/haujet/color-trace)   [GitHub](https://github.com/HaujetZhao/color-trace)
 
 #  Color Trace
 
@@ -55,14 +55,23 @@ Python 依赖下列库：
 
 ## 👍 使用方式
 
-本工具是 Python 脚本的形式，脚本文件在 `src` 文件夹中，在命令行中使用：
+可以克隆本仓库进行安装：
+
+```sh
+$ git clone https://github.com/HaujetZhao/color-trace.git
+$ cd color-trace
+$ poetry build
+$ pip install dist/color-trace-1.1.tar.gz
+```
+
+本工具提供命令行中可用的可执行文件 `color-trace`：
 
 ```
-$ python color-trace.py -h
-usage: color-trace.py [-h] -i src [src ...] [-o dest] [-d destdir] [-C N]
-                      [--width <dim>] [--height <dim>] [-c N] [-q algorithm]
-                      [-fs | -ri] [-r paletteimg] [-s] [-p size] [-D size]
-                      [-S threshold] [-O tolerance] [-bg] [-v] [--version]
+$ color-trace --help
+usage: color-trace [-h] -i src [src ...] [-o dest] [-d destdir] [-C N]
+                   [--width <dim>] [--height <dim>] [-c N] [-q algorithm]
+                   [-fs | -ri] [-r paletteimg] [-s] [-p size] [-D size]
+                   [-S threshold] [-O tolerance] [-bg] [-v] [--version]
 
 使用 potrace 将位图转化为彩色 svg 矢量图
 
@@ -108,8 +117,8 @@ optional arguments:
 例如：
 
 ```
-$ python color-trace.py -i 位图.png -c 3 -o 矢量.svg
-$ python color-trace.py -i 文件夹/*.png -c 3 -d 输出文件夹
+$ color-trace -i 位图.png -c 3 -o 矢量.svg
+$ color-trace -i 文件夹/*.png -c 3 -d 输出文件夹
 ```
 
 ## 🔮 背景
@@ -156,9 +165,8 @@ $ python color-trace.py -i 文件夹/*.png -c 3 -d 输出文件夹
 
 ## 😀 交流
 
-如果有软件方面的反馈可以提交 issues，或者加入 QQ 群：[1146626791](https://qm.qq.com/cgi-bin/qm/qr?k=DgiFh5cclAElnELH4mOxqWUBxReyEVpm&jump_from=webapi) 
+如果有软件方面的反馈可以提交 issues，或者加入 QQ 群：[1146626791](https://qm.qq.com/cgi-bin/qm/qr?k=DgiFh5cclAElnELH4mOxqWUBxReyEVpm&jump_from=webapi)
 
 
 
 ## 🙏 鸣谢
-

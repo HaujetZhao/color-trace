@@ -1,0 +1,28 @@
+[tool.poetry]
+name = "color-trace"
+version = "1.01"
+description = "这是一个将位图描摹为彩色矢量 svg 图片的程序，是一个命令行工具，使用 Python 脚本实现，运行环境 Python 3.8+。"
+authors = ["Haujet <1292756898@qq.com>"]
+license = "GPLv2"
+packages = [{ include = "color_trace" }]
+repository = "https://github.com/HaujetZhao/color-trace"
+readme = "README.md"
+
+
+[tool.poetry.dependencies]
+python = "^3.8"
+lxml = "^4.6.3"
+
+[tool.poetry.dev-dependencies]
+yapf = "^0.31.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+color-trace = "color_trace.cli:main"
+color-trace-install = "color_trace.foreign:cli_install"
+
+[tool.poetry.urls]
+"Bug Tracer" = "https://github.com/HaujetZhao/color-trace/issues"

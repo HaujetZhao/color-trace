@@ -451,7 +451,7 @@ class BoxLayout(Layout):
             elif self._direction in [TopToBottom, BottomToTop]:
                 cum_dim += item_size.height
                 max_orth_dim = max(max_orth_dim,item_size.width)
-            else: #Composite                
+            else: #Composite
                 cum_dim = item_size.height
                 max_orth_dim = item_size.width
 
