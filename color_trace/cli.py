@@ -868,15 +868,6 @@ def 获得参数(cmdargs=None):
 
 def main(参数=None):
     """收集参数和运行描摹"""
-
-    try:
-        检查外部依赖程序的安装()
-    except ColorTraceEnvironmentError as e:
-        未安装的必要依赖 = e.args[0]
-        汇报(f"(color-trace)错误：存在未安装的必要依赖 {','.join(未安装的必要依赖)}，程序无法运行")
-        汇报(f"(color-trace)提示：可以使用命令 'color-trace-install {' '.join(未安装的必要依赖)}' 用脚本安装")
-        sys.exit(-1)
-
     if 参数 is None:
         参数 = 获得参数()
 
@@ -928,6 +919,16 @@ def main(参数=None):
 
     for k in ('colors', 'directory', 'input', 'output', 'cores', 'floydsteinberg', 'riemersma', 'verbose'):
         彩色描摹参数.pop(k)
+
+    try:
+        检查外部依赖程序的安装()
+    except ColorTraceEnvironmentError as e:
+        未安装的必要依赖 = e.args[0]
+        汇报(f"(color-trace)错误：存在未安装的必要依赖 {','.join(未安装的必要依赖)}，程序无法运行")
+        # todo: 实现安装脚本
+        # 汇报(f"(color-trace)提示：可以使用命令 'color-trace-install {' '.join(未安装的必要依赖)}' 用脚本安装")
+        sys.exit(-1)
+
 
     彩色描摹(输入列表, 输出列表, 颜色数, 进程数, 拟色=拟色, **彩色描摹参数)
 
