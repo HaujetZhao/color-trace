@@ -23,14 +23,6 @@
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 
-# 外部程序的路径
-pngquant_命令 = 'pngquant'
-pngnq_路径 = 'pngnq'
-ImageMagick_convert_命令 = 'magick convert'
-ImageMagick_identify_命令 = 'magick identify'
-potrace_命令 = 'potrace'
-potrace_选项 = ''
-
 命令行最长 = 1900  # 命令行长度限制
 汇报级别 = 0  # 不止是一个常数，它也会爱 -v/--verbose 选项影响
 
