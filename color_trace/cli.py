@@ -40,11 +40,10 @@ import tempfile
 import time
 import shlex
 import re
-from pprint import pprint
 
 
 from .svg_stack import svg_stack
-from .foreign import cli_pngnq, cli_potrace, cli_imagemagick, cli_pngquant
+from .foreign import cli_pngnq, cli_potrace, cli_imagemagick, cli_pngquant, 检查外部依赖程序的安装
 from .exception import *
 
 def 汇报(*args, level=1):
@@ -869,6 +868,14 @@ def 获得参数(cmdargs=None):
 
 def main(参数=None):
     """收集参数和运行描摹"""
+
+    try:
+        检查外部依赖程序的安装()
+    except ColorTraceEnvironmentError as e:
+        未安装的必要依赖 = e.args[0]
+        汇报(f"(color-trace)错误：存在未安装的必要依赖 {','.join(未安装的必要依赖)}，程序无法运行")
+        汇报(f"(color-trace)提示：可以使用命令 'color-trace-install {' '.join(未安装的必要依赖)}' 用脚本安装")
+        sys.exit(-1)
 
     if 参数 is None:
         参数 = 获得参数()
